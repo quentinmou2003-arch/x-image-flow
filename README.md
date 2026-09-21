@@ -25,6 +25,8 @@
 
 目前通过本地加载安装，尚未上架 Chrome 网上应用店。
 
+**[下载最新安装包](https://github.com/quentinmou2003-arch/x-image-flow/releases/latest)**：下载发布页中的 `x-image-flow-v2.3.0.zip` 并解压，加载包含 `manifest.json` 的目录即可。也可以按下面步骤下载完整源码安装。
+
 1. 点击仓库上方 **Code → Download ZIP**，解压到一个固定目录。
 2. 打开 Chrome 的 `chrome://extensions`，开启右上角的**开发者模式**。
 3. 点击**加载已解压的扩展程序**，选择项目中的 **`extension` 文件夹**。
