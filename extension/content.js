@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.0</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.1</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -34,6 +34,17 @@
   function toast(text) { $('.toast').textContent = text; $('.toast').classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('.toast').classList.add('hidden'), 5500); }
   function button(label, className, title) { const b = document.createElement('button'); b.className = className; b.textContent = label; if (title) b.title = title; return b; }
   function postOf(article) { return XIF.status(article.querySelector('a[href*="/status/"] time')?.closest('a')?.href || article.querySelector('a[href*="/status/"]')?.href); }
+  function authorURL(article, post, mainPost) {
+    for (const link of article.querySelectorAll('a[href*="/status/"]')) {
+      const url = new URL(link.href), match = url.pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)(?:\/|$)/);
+      if (['https://x.com', 'https://twitter.com'].includes(url.origin) && match?.[2] === post.id) return `https://x.com/${match[1]}`;
+    }
+    if (post.id === mainPost.id) for (const link of article.querySelectorAll('[data-testid="User-Name"] a[href]')) {
+      const url = new URL(link.href);
+      if (['https://x.com', 'https://twitter.com'].includes(url.origin) && /^\/[A-Za-z0-9_]{1,15}\/?$/.test(url.pathname)) return `https://x.com${url.pathname}`;
+    }
+    return '';
+  }
   function quotedAuthor(article, post) {
     const handle = [...article.querySelectorAll('a[href*="/status/"]')].map(a => new URL(a.href).pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)(?:\/|$)/)).find(match => match?.[2] === post.id)?.[1];
     if (!handle) return '引用 · 作者未识别';
@@ -242,7 +253,7 @@
     g.pick.onclick = () => { const im = g.images[g.index]; if (im.type === 'video') return; if (selected.has(im.url)) selected.delete(im.url); else if (selected.size < 4) selected.set(im.url, {...im}); else { toast('最多选择 4 张图片'); return; } updateSelection(); };
     g.play = button('▶', 'video-play', '播放低清视频'); g.play.onclick = () => openVideo(g);
     media.append(photo, g.loader, g.badge, g.prev, g.next, g.dots, g.pick, g.play);
-    const meta = document.createElement('div'); meta.className = 'meta'; const author = document.createElement('span'); author.className = 'author'; author.textContent = g.author;
+    const meta = document.createElement('div'); meta.className = 'meta'; const author = document.createElement('a'); author.className = 'author'; author.textContent = g.author; author.target = '_blank'; author.rel = 'noopener noreferrer'; if (g.authorURL) { author.href = g.authorURL; author.title = `打开 ${g.author} 的主页`; }
     const source = document.createElement('a'); source.className = 'source'; source.href = g.href; source.target = '_blank'; source.rel = 'noopener noreferrer'; source.textContent = '原推文 ↗'; meta.append(author, source);
     const social = document.createElement('div'); social.className = 'social';
     g.likeButton = button('', 'like'); g.likeButton.innerHTML = `${svg('heart')}<span>喜欢</span>`;
@@ -358,9 +369,11 @@
         if (!g) {
           if (groups.size >= 600) continue;
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
+          g.authorURL = authorURL(article, post, mainPost);
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
         } else {
+          const profile = authorURL(article, post, mainPost); if (profile) { g.authorURL = profile; g.card.querySelector('.author').href = profile; }
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {
             const old = g.images.find(old => mediaKey(old) === mediaKey(im)) || (im.type === 'video' ? g.images.find(old => old.type === 'video' && old.order === im.order && (!old.preview || !im.preview)) : null);
