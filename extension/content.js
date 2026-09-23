@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.1</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.2</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -92,7 +92,11 @@
     for (const g of groups.values()) if (visible(g)) place(g);
     updateCount(); if (open) requestAnimationFrame(() => { loadViewportCovers(); scheduleRebalance(500); });
   }
-  function place(g) { const col = heights.indexOf(Math.min(...heights)); columns[col].append(g.card); const im = g.images[g.index]; heights[col] += density * (im.height / im.width || 1.3) + 135; }
+  function place(g) { const col = heights.indexOf(Math.min(...heights)); columns[col].append(g.card); const im = g.images[g.index], ratio = im.height / im.width || 1.3; heights[col] += Math.min(density * (ratio > 2.6 ? 1.6 : ratio), 560, innerHeight * .65) + 135; }
+  function updateLongImage(g) {
+    const im = g.images[g.index], long = im.type !== 'video' && im.height / im.width > 2.6;
+    g.media.classList.toggle('long-image', long); g.longHint.classList.toggle('hidden', !long);
+  }
   function loadViewportCovers() {
     if (!open) return; const viewport = $('.scroll').getBoundingClientRect();
     for (const g of groups.values()) {
@@ -213,6 +217,7 @@
     else { g.photo.removeAttribute('src'); g.media.classList.remove('loading'); g.media.classList.add('load-error'); g.loader.textContent = im.type === 'video' ? '视频封面未载入' : '图片地址不可用'; }
   }
   function updateCard(g) {
+    updateLongImage(g);
     const im = g.images[g.index], isVideo = im.type === 'video'; g.card.classList.toggle('multi', g.images.length > 1); g.card.classList.toggle('video-card', isVideo);
     g.photo.alt = im.alt; g.photo.width = im.width; g.photo.height = im.height;
     g.badge.textContent = `${isVideo ? (im.gif ? 'GIF · ' : '视频 · ') : ''}${g.index + 1} / ${g.images.length}`; g.badge.classList.toggle('hidden', g.images.length < 2 && !isVideo);
@@ -245,14 +250,15 @@
     const card = document.createElement('article'); card.className = 'card'; card.dataset.key = g.id; g.card = card;
     const media = document.createElement('div'); media.className = 'media loading'; g.media = media; const photo = document.createElement('img'); photo.className = 'photo'; photo.decoding = 'async'; photo.loading = 'lazy'; g.photo = photo;
     g.loader = document.createElement('div'); g.loader.className = 'media-loader'; g.loader.textContent = '正在读取图片…';
+    g.longHint = button('长图 · 点击查看完整图片', 'long-image-hint hidden'); g.longHint.onclick = () => openViewer(g);
     photo.onclick = () => g.images[g.index].type === 'video' ? openVideo(g) : openViewer(g); photo.onerror = () => { if (photo.dataset.url !== (g.images[g.index].preview || '')) return; photo.classList.add('error-image'); media.classList.remove('loading'); media.classList.add('load-error'); g.loader.textContent = g.images[g.index].type === 'video' ? '视频封面不可用 · 点击播放' : '图片读取失败 · 点击查看原图'; photo.alt = g.loader.textContent; };
-    photo.onload = () => { const im = g.images.find(item => item.preview === photo.dataset.url); if (im) { im.width = photo.naturalWidth; im.height = photo.naturalHeight; } if (photo.dataset.url === (g.images[g.index].preview || '')) { photo.width = photo.naturalWidth; photo.height = photo.naturalHeight; media.classList.remove('loading', 'load-error'); scheduleRebalance(); } };
+    photo.onload = () => { const im = g.images.find(item => item.preview === photo.dataset.url); if (im) { im.width = photo.naturalWidth; im.height = photo.naturalHeight; } if (photo.dataset.url === (g.images[g.index].preview || '')) { photo.width = photo.naturalWidth; photo.height = photo.naturalHeight; updateLongImage(g); media.classList.remove('loading', 'load-error'); scheduleRebalance(); } };
     g.badge = document.createElement('span'); g.badge.className = 'badge';
     g.prev = button('‹', 'arrow prev', '上一张'); g.next = button('›', 'arrow next', '下一张'); g.prev.onclick = () => turn(g, -1); g.next.onclick = () => turn(g, 1);
     g.dots = document.createElement('div'); g.dots.className = 'dots'; g.pick = button('+', 'pick', '选择当前图片，跨推文拼接');
     g.pick.onclick = () => { const im = g.images[g.index]; if (im.type === 'video') return; if (selected.has(im.url)) selected.delete(im.url); else if (selected.size < 4) selected.set(im.url, {...im}); else { toast('最多选择 4 张图片'); return; } updateSelection(); };
     g.play = button('▶', 'video-play', '播放低清视频'); g.play.onclick = () => openVideo(g);
-    media.append(photo, g.loader, g.badge, g.prev, g.next, g.dots, g.pick, g.play);
+    media.append(photo, g.loader, g.badge, g.prev, g.next, g.dots, g.pick, g.play, g.longHint);
     const meta = document.createElement('div'); meta.className = 'meta'; const author = document.createElement('a'); author.className = 'author'; author.textContent = g.author; author.target = '_blank'; author.rel = 'noopener noreferrer'; if (g.authorURL) { author.href = g.authorURL; author.title = `打开 ${g.author} 的主页`; }
     const source = document.createElement('a'); source.className = 'source'; source.href = g.href; source.target = '_blank'; source.rel = 'noopener noreferrer'; source.textContent = '原推文 ↗'; meta.append(author, source);
     const social = document.createElement('div'); social.className = 'social';

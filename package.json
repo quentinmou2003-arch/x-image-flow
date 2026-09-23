@@ -1,6 +1,6 @@
 {
   "name": "x-image-flow",
-  "version": "2.3.1",
+  "version": "2.3.2",
   "private": true,
   "description": "拾图：X 图片与视频瀑布流 Chrome 扩展",
   "scripts": {"test": "node --test tests/*.test.cjs"},
