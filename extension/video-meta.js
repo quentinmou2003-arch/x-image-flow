@@ -20,7 +20,7 @@
     while (stack.length && steps++ < 40000) {
       const {value, depth} = stack.pop(); if (!value || typeof value !== 'object' || depth > 35) continue;
       const legacy = value.legacy || value, id = String(legacy.id_str || value.rest_id || '');
-      if (/^\d+$/.test(id) && (Array.isArray(legacy.extended_entities?.media) || Number.isSafeInteger(legacy.favorite_count) || Number.isSafeInteger(legacy.bookmark_count))) {
+      if (/^\d+$/.test(id) && (Array.isArray(legacy.extended_entities?.media) || Number.isSafeInteger(legacy.favorite_count) || Number.isSafeInteger(legacy.bookmark_count) || typeof legacy.favorited === 'boolean' || typeof legacy.bookmarked === 'boolean' || typeof value.bookmarked === 'boolean')) {
         const media = (legacy.extended_entities?.media || []).slice(0, 4).flatMap((m, index) => {
           if (!['video', 'animated_gif'].includes(m.type)) return [];
           const sources = variants(m.video_info?.variants), ratio = m.video_info?.aspect_ratio;
@@ -28,7 +28,10 @@
         });
         const counts = {};
         for (const [key, field] of [['like', 'favorite_count'], ['bookmark', 'bookmark_count']]) if (Number.isSafeInteger(legacy[field]) && legacy[field] >= 0) counts[key] = legacy[field];
-        if (media.length || Object.keys(counts).length) records.set(id, {id, media, counts});
+        const state = {};
+        if (typeof legacy.favorited === 'boolean') state.like = legacy.favorited;
+        const bookmarked = legacy.bookmarked ?? value.bookmarked; if (typeof bookmarked === 'boolean') state.bookmark = bookmarked;
+        if (media.length || Object.keys(counts).length || Object.keys(state).length) records.set(id, {id, media, counts, state});
       }
       for (const child of Object.values(value)) if (child && typeof child === 'object') stack.push({value: child, depth: depth + 1});
     }

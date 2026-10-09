@@ -57,7 +57,7 @@ function registration(images, mode, key) {
   const seams = samples.slice(1).map((im, i) => {
     let s = XIFStitch.match(samples[i], im, mode);
     if (s.accepted && scale < 1) {
-      const guess = {overlap: Math.round(s.overlap / scale), shift: Math.round(s.shift / scale)}, radius = Math.ceil(3 / scale);
+      const guess = {overlap: Math.round(s.overlap / scale), shift: Math.round(s.shift / scale)}, radius = Math.min(16, Math.ceil(3 / scale));
       const depth = Math.max(4, guess.overlap + radius + 2);
       s = XIFStitch.refine(edgePixels(images[i], horizontal, true, depth), edgePixels(images[i + 1], horizontal, false, depth), mode, guess, radius);
     }

@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const {execFileSync} = require('node:child_process');
+const {Script} = require('node:vm');
 const root = path.resolve(__dirname, '../extension');
 const shared = require('../extension/shared.js');
 const video = require('../extension/video-meta.js');
@@ -12,7 +12,7 @@ test('manifest references exist and JavaScript parses', () => {
   assert.equal(manifest.manifest_version, 3);
   const files = [manifest.background.service_worker, ...manifest.content_scripts.flatMap(s => s.js), ...Object.values(manifest.icons), ...Object.values(manifest.action.default_icon), ...manifest.web_accessible_resources.flatMap(r => r.resources), 'offscreen.html', 'offscreen.js'];
   for (const file of files) assert(fs.existsSync(path.join(root, file)), file);
-  for (const file of fs.readdirSync(root).filter(f => f.endsWith('.js'))) execFileSync(process.execPath, ['--check', path.join(root, file)]);
+  for (const file of fs.readdirSync(root).filter(f => f.endsWith('.js'))) new Script(fs.readFileSync(path.join(root, file), 'utf8'), {filename: file});
 });
 
 test('media URL rules keep original size and reject other hosts', () => {

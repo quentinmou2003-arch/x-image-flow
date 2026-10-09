@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.2</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.8</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -26,11 +26,74 @@
     <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
     <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
     <div class="toast hidden" role="status" aria-live="polite"></div>`;
-  const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map();
+  const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map(), tweetStates = new Map();
   let open = false, density = 320, fast = true, filter = 'all', columns = [], heights = [], route = location.href, feedSwitching = false;
   let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, loading = false, noMore = false, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-  const message = async data => { const r = await chrome.runtime.sendMessage({target: 'worker', ...data}); if (!r?.ok) throw Error(r?.error || '扩展未响应，请刷新页面'); return r; };
+  const socialPending = new Map(), TEMPLATE_KEY = 'xif-social-templates-v1';
+  let templateWrites = Promise.resolve();
+  function apiAction(id, kind, desired) {
+    const requestId = crypto.randomUUID();
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { socialPending.delete(requestId); resolve({ok: false, error: 'X 请求结果未确认，请到原推文检查状态'}); }, 16000);
+      socialPending.set(requestId, result => { clearTimeout(timer); socialPending.delete(requestId); resolve(result); });
+      window.postMessage({channel: 'xif-social-write', requestId, id, kind, desired}, location.origin);
+    });
+  }
+  function socialHelp(text) {
+    let bar = $('.apihelp');
+    if (!bar) {
+      bar = document.createElement('div'); bar.className = 'apihelp';
+      bar.style.cssText = 'padding:10px 24px;background:#071a28;display:flex;align-items:center;gap:14px;font-size:12px';
+      const label = document.createElement('span'), back = button('返回 X', 'primary'); back.onclick = () => { if (open) toggle(); };
+      bar.append(label, back); $('.tabs').after(bar);
+    }
+    bar.querySelector('span').textContent = text; bar.classList.remove('hidden');
+  }
+  function saveTemplate(operation, value) {
+    templateWrites = templateWrites.then(async () => {
+      const saved = (await chrome.storage.local.get(TEMPLATE_KEY))[TEMPLATE_KEY] || {};
+      const next = {};
+      for (const [key, val] of Object.entries(saved).slice(0, 4)) { const t = XIFSocial.template(val); if (t && key === t.operation) next[key] = t; }
+      if (value) next[operation] = value; else delete next[operation];
+      await chrome.storage.local.set({[TEMPLATE_KEY]: next});
+    }).catch(() => {});
+  }
+  window.addEventListener('message', event => {
+    if (event.source !== window || event.origin !== location.origin) return; const msg = event.data;
+    if (msg?.channel === 'xif-social-reply') { const reply = socialPending.get(msg.requestId); if (reply) reply(msg.result?.ok === true && typeof msg.result.state === 'boolean' ? {ok: true, state: msg.result.state} : {ok: false, unavailable: msg.result?.unavailable === true, error: String(msg.result?.error || 'X 未确认操作成功').slice(0, 250)}); }
+    if (msg?.channel === 'xif-social-template') { const t = XIFSocial.template(msg.template); if (t) saveTemplate(t.operation, t); }
+    if (msg?.channel === 'xif-social-forget' && XIFSocial.operations[msg.operation]) saveTemplate(msg.operation, null);
+    if (msg?.channel === 'xif-social-state' && /^\d{1,30}$/.test(msg.id) && ['like', 'bookmark'].includes(msg.kind) && typeof msg.state === 'boolean') {
+      const g = groups.get(msg.id); if (!g) return;
+      const counts = tweetCounts.get(g.id); if (typeof g[msg.kind] === 'boolean' && g[msg.kind] !== msg.state && Number.isSafeInteger(counts?.[msg.kind])) counts[msg.kind] = Math.max(0, counts[msg.kind] + (msg.state ? 1 : -1));
+      g[msg.kind] = msg.state; (g.apiState ||= {})[msg.kind] = {state: msg.state, time: Date.now()}; updateSocial(g);
+    }
+  });
+  chrome.storage.local.get(TEMPLATE_KEY).then(saved => window.postMessage({channel: 'xif-social-init', templates: Object.values(saved[TEMPLATE_KEY] || {}).slice(0, 4)}, location.origin)).catch(() => {});
+  function disconnected() {
+    if (!$('.reconnect')) {
+      const bar = document.createElement('div'); bar.className = 'reconnect';
+      bar.style.cssText = 'padding:12px 24px;background:#071a28;color:#e7e9ea;display:flex;gap:16px;align-items:center;pointer-events:auto';
+      const text = document.createElement('span'); text.textContent = '插件连接已失效，请刷新 X 后继续。刷新会清空本轮收集记录。';
+      const reload = button('刷新 X', 'primary'); reload.onclick = () => location.reload();
+      bar.append(text, reload); $('.panel').prepend(bar);
+    }
+    return Error('插件连接已失效，请刷新 X 页面后重试');
+  }
+  const message = async data => {
+    let r;
+    try {
+      if (!globalThis.chrome?.runtime?.id || typeof globalThis.chrome.runtime.sendMessage !== 'function') throw disconnected();
+      let timer;
+      try { r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : 60000); })]); }
+      finally { clearTimeout(timer); }
+    } catch (e) {
+      if (!globalThis.chrome?.runtime?.id || /Extension context invalidated|context.*invalidated/i.test(e.message)) throw disconnected();
+      throw e;
+    }
+    if (!r?.ok) throw Error(r?.error || '扩展未响应，请刷新页面'); return r;
+  };
   function toast(text) { $('.toast').textContent = text; $('.toast').classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('.toast').classList.add('hidden'), 5500); }
   function button(label, className, title) { const b = document.createElement('button'); b.className = className; b.textContent = label; if (title) b.title = title; return b; }
   function postOf(article) { return XIF.status(article.querySelector('a[href*="/status/"] time')?.closest('a')?.href || article.querySelector('a[href*="/status/"]')?.href); }
@@ -87,6 +150,7 @@
   function layout(force = false) {
     const width = $('.scroll').clientWidth || innerWidth, n = Math.max(1, Math.floor((width - 40) / (density + 20)));
     if (!force && n === columns.length) return;
+    for (const g of groups.values()) wakeCard(g);
     $('.grid').replaceChildren(); $('.grid').style.gridTemplateColumns = `repeat(${n},minmax(0,1fr))`; heights = Array(n).fill(0);
     columns = Array.from({length: n}, () => { const c = document.createElement('div'); c.className = 'column'; $('.grid').append(c); return c; });
     for (const g of groups.values()) if (visible(g)) place(g);
@@ -102,7 +166,20 @@
     for (const g of groups.values()) {
       if (!visible(g) || !g.card?.isConnected) continue; const rect = g.card.getBoundingClientRect();
       if (rect.bottom >= viewport.top - 1200 && rect.top <= viewport.bottom + 1200) { g.near = true; loadCover(g, rect.bottom >= viewport.top && rect.top <= viewport.bottom); }
+      else if (rect.bottom < viewport.top - 2400 || rect.top > viewport.bottom + 2400) {
+        g.near = false;
+        if (!g.sleeping && g !== viewGroup && !g.busy && !g.card.contains(root.activeElement)) {
+          // Keep the exact slot for back-scrolling, but release decoded cover pixels.
+          g.card.style.height = `${rect.height}px`;
+          g.card.style.contentVisibility = 'hidden'; g.sleeping = true;
+          g.photo.dataset.url = ''; g.photo.removeAttribute('src');
+        }
+      }
     }
+  }
+  function wakeCard(g) {
+    if (!g.sleeping) return;
+    g.sleeping = false; g.card.style.contentVisibility = ''; g.card.style.height = '';
   }
   function scheduleRebalance(delay = 420) {
     clearTimeout(rebalanceTimer); rebalanceTimer = setTimeout(() => {
@@ -211,6 +288,7 @@
     }
   }, {root: $('.scroll'), rootMargin: '1200px 0px'});
   function loadCover(g, priority = false) {
+    wakeCard(g);
     const im = g.images[g.index]; if (g.photo.dataset.url === im.preview && g.photo.getAttribute('src')) return;
     g.photo.dataset.url = im.preview || ''; g.photo.classList.remove('error-image'); g.media.classList.add('loading'); g.media.classList.remove('load-error');
     if (im.preview) { g.photo.loading = 'eager'; g.photo.fetchPriority = priority ? 'high' : 'auto'; g.photo.src = im.preview; }
@@ -281,13 +359,17 @@
   async function socialAction(g, kind) {
     if (g.busy) return; g.busy = true; g.likeButton.disabled = g.bookmarkButton.disabled = true;
     try {
-      const local = nativeControl(findArticle(g.id), kind); if (local) g[kind] = local.on;
+      const local = nativeControl(findArticle(g.id), kind); if (local && !g.apiState?.[kind]) g[kind] = local.on;
       const desired = g[kind] !== true;
       const previousState = g[kind], previousCount = tweetCounts.get(g.id)?.[kind];
-      const result = local ? await nativeAction(g.id, kind, desired) : await message({action: 'tweet-action', href: g.href, kind, desired});
+      let result = await apiAction(g.id, kind, desired);
+      // Fall back only when no API request was sent. Never repeat an uncertain write.
+      if (result.unavailable && local && !g.apiState?.[kind]) result = await nativeAction(g.id, kind, desired);
+      if (result.unavailable) socialHelp(result.error);
       if (!result.ok) throw Error(result.error);
       const counts = tweetCounts.get(g.id); if (counts && Number.isSafeInteger(previousCount) && counts[kind] === previousCount && previousState !== result.state) counts[kind] = Math.max(0, previousCount + (result.state ? 1 : -1));
       g[kind] = result.state; updateSocial(g); if (filter !== 'all') layout(true);
+      $('.apihelp')?.classList.add('hidden');
       toast(`${kind === 'like' ? (desired ? '已喜欢' : '已取消喜欢') : (desired ? '已添加书签' : '已取消书签')} · X 推文状态已更新`);
     } catch (e) { toast(e.message); }
     finally { g.busy = false; g.likeButton.disabled = g.bookmarkButton.disabled = false; }
@@ -318,12 +400,19 @@
       const counts = {...tweetCounts.get(record.id)};
       for (const kind of ['like', 'bookmark']) if (Number.isSafeInteger(record.counts?.[kind]) && record.counts[kind] >= 0) counts[kind] = record.counts[kind];
       tweetCounts.delete(record.id); tweetCounts.set(record.id, counts);
-      const existing = groups.get(record.id); if (existing) updateSocial(existing);
+      const states = {...tweetStates.get(record.id)};
+      for (const kind of ['like', 'bookmark']) if (typeof record.state?.[kind] === 'boolean') states[kind] = record.state[kind];
+      tweetStates.delete(record.id); tweetStates.set(record.id, states);
+      const existing = groups.get(record.id); if (existing) {
+        for (const kind of ['like', 'bookmark']) if (!existing.busy && typeof states[kind] === 'boolean' && (!existing.apiState?.[kind] || Date.now() - existing.apiState[kind].time > 5000)) { existing[kind] = states[kind]; if (existing.apiState) delete existing.apiState[kind]; }
+        updateSocial(existing);
+      }
       const media = record.media.slice(0, 4).filter(m => m && m.type === 'video').map((m, i) => ({type: 'video', key: String(m.key || i).slice(0, 80), gif: m.gif === true, poster: XIFVideo.posterURL(m.poster), variants: XIFVideo.variants(m.variants), width: Math.min(32767, Math.max(1, Number(m.width) || 16)), height: Math.min(32767, Math.max(1, Number(m.height) || 9)), order: Math.min(4, Math.max(1, Number(m.order) || i + 1))}));
       if (media.length) { videoMetadata.delete(record.id); videoMetadata.set(record.id, media); }
     }
     while (videoMetadata.size > 600) videoMetadata.delete(videoMetadata.keys().next().value);
     while (tweetCounts.size > 600) tweetCounts.delete(tweetCounts.keys().next().value);
+    while (tweetStates.size > 600) tweetStates.delete(tweetStates.keys().next().value);
     scheduleScan();
   });
   window.postMessage({channel: 'xif-video-request'}, location.origin);
@@ -373,9 +462,9 @@
         if (!images.length) continue; images.sort((a, b) => a.order - b.order);
         let g = groups.get(post.id);
         if (!g) {
-          if (groups.size >= 600) continue;
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
           g.authorURL = authorURL(article, post, mainPost);
+          Object.assign(g, tweetStates.get(post.id) || {});
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
         } else {
@@ -387,12 +476,12 @@
             else if (old && im.type === 'video') { old.variants = im.variants.length ? im.variants : old.variants; old.url = old.variants[0]?.url || ''; old.preview = im.preview || old.preview; old.gif = im.gif; }
           }
           g.images.sort((a, b) => a.order - b.order);
-          if (!g.busy && post.id === mainPost.id) for (const kind of ['like', 'bookmark']) { const actual = nativeControl(article, kind); if (actual) { if (g[kind] !== actual.on && filter !== 'all') changed = true; g[kind] = actual.on; } }
+          if (!g.busy && post.id === mainPost.id) for (const kind of ['like', 'bookmark']) { if (XIFSocial.syncNativeState(g, kind, nativeControl(article, kind)) && filter !== 'all') changed = true; }
           updateCard(g);
         }
       }
     }
-    if (changed) { revision++; updateCount(); if (filter !== 'all') layout(true); else scheduleRebalance(); }
+    if (changed) { revision++; noMore = false; updateCount(); if (filter !== 'all') layout(true); else scheduleRebalance(); requestAnimationFrame(loadViewportCovers); }
   }
   function scheduleScan() { if (!open || scanTimer) return; scanTimer = setTimeout(() => { scanTimer = 0; scan(); }, 80); }
   new MutationObserver(scheduleScan).observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'poster', 'data-testid', 'aria-selected']});
@@ -407,10 +496,12 @@
       if (revision > initial && $('.scroll').scrollHeight - $('.scroll').scrollTop - $('.scroll').clientHeight > $('.scroll').clientHeight * 2) break;
     }
     loading = false; $('.more').disabled = false; $('.more').textContent = '继续加载内容 ↓';
-    if (revision === initial) { noMore = true; if (manual) toast(groups.size >= 600 ? '已收集 600 组，可刷新开始新一轮' : '暂未发现新图片，可稍后重试或返回 X 检查'); }
+    if (revision === initial) { noMore = true; if (manual) toast('X 暂未返回更多内容，可稍后点击继续加载'); }
+    else setTimeout(maybeMore, 180);
   }
   function maybeMore() { const el = $('.scroll'); if (fast && open && ['all', 'image', 'video'].includes(filter) && el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight * 1.8) more(); }
-  $('.more').onclick = () => more(true); $('.scroll').addEventListener('scroll', () => { lastGalleryScroll = Date.now(); loadViewportCovers(); maybeMore(); scheduleRebalance(650); }, {passive: true});
+  let coverFrame = 0;
+  $('.more').onclick = () => more(true); $('.scroll').addEventListener('scroll', () => { lastGalleryScroll = Date.now(); if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = 0; loadViewportCovers(); maybeMore(); }); scheduleRebalance(650); }, {passive: true});
   function openModal(selector) { focusBefore = root.activeElement; $(selector).classList.remove('hidden'); $(selector + ' .dismiss').focus(); $('.panel').inert = true; }
   function closeModal(selector) { $(selector).classList.add('hidden'); if (selector === '.viewer') { viewGroup = null; $('.viewstage img').removeAttribute('src'); } else if (selector === '.videoviewer') stopVideo(); else stitchSession = null; $('.panel').inert = false; focusBefore?.focus(); }
   root.querySelectorAll('.dismiss').forEach(b => b.onclick = () => closeModal(b.closest('.viewer') ? '.viewer' : b.closest('.videoviewer') ? '.videoviewer' : '.stitcher'));
@@ -531,7 +622,10 @@
     if (s.images.length < 2) { $('.stitched').classList.add('hidden'); $('.previewstatus').textContent = '至少需要两张图片才能拼接，请关闭后重新选择图片。'; return; }
     previewTimer = setTimeout(async () => {
       try { const r = await message({action: 'preview', urls: s.images.map(im => im.url), mode: s.mode, blend: s.blend, seams: s.seams}); if (stitchSession !== s || version !== s.version) return; renderSeams(s, r.seams || []); $('.stitched').src = r.data; $('.stitched').classList.remove('hidden'); $('.previewstatus').classList.add('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = false; }
-      catch (e) { if (stitchSession === s && version === s.version) { $('.stitched').classList.add('hidden'); $('.previewstatus').textContent = `预览失败：${e.message}`; } }
+      catch (e) { if (stitchSession === s && version === s.version) {
+        if (s.blend) { s.blend = false; s.seams = []; $('.blend input').checked = false; $('.detectnote').textContent = '自动对齐未完成，已切换为普通拼接，可手动调整接缝。'; requestPreview(s); return; }
+        $('.stitched').classList.add('hidden'); $('.previewstatus').textContent = `预览失败：${e.message}。点击拼接方向可重试。`;
+      } }
     }, 120);
   }
   root.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { const s = stitchSession; if (!s) return; s.touched = true; setMode(s, b.dataset.mode); requestPreview(s); });
