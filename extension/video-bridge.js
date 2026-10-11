@@ -1,4 +1,4 @@
-/* Observe video variants already returned to X. No extra API requests,
+/* Observe media, counts and advertising flags already returned to X. No extra API requests,
    credentials, authorization headers or tweet text are sent to the extension. */
 (() => {
   'use strict';
@@ -13,7 +13,7 @@
       const records = api.extract(json);
       for (const r of records) { cache.delete(r.id); cache.set(r.id, r); }
       while (cache.size > 600) cache.delete(cache.keys().next().value);
-      if (records.length) emit(records.slice(0, 100));
+      for (let i = 0; i < records.length; i += 100) emit(records.slice(i, i + 100));
     } catch { /* Do not interrupt X if its response shape changes. */ }
   }
   const originalFetch = window.fetch;

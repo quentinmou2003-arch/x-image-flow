@@ -35,6 +35,10 @@
       }
       for (const child of Object.values(value)) if (child && typeof child === 'object') stack.push({value: child, depth: depth + 1});
     }
+    for (const id of scope.XIFAds?.extract(json) || []) {
+      const record = records.get(id) || {id, media: [], counts: {}, state: {}};
+      record.promoted = true; records.set(id, record);
+    }
     return [...records.values()];
   }
   scope.XIFVideo = {videoURL, posterURL, variants, extract};

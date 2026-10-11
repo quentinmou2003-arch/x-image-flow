@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.9</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.10</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -27,6 +27,8 @@
     <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
     <section class="hidemanager hidden" role="dialog" aria-modal="true" aria-label="管理拾图隐藏"><div class="modalhead"><b>已隐藏的推文</b><button class="dismiss">关闭 ×</button></div><p class="hide-note">这里管理拾图的本地隐藏。X 的屏蔽、隐藏账号与推荐偏好请在 X 管理。</p><div class="hidden-list"></div></section>
     <div class="native-shield hidden"></div><div class="menu-fallback hidden" role="menu" aria-label="推文更多选项"></div><div class="toast hidden" role="status" aria-live="polite"></div>`;
+  const promotedPosts = new Set();
+  let blockAds = true;
   const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map(), tweetStates = new Map();
   let open = false, density = 320, fast = true, filter = 'all', columns = [], heights = [], route = location.href, feedSwitching = false;
   let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, loading = false, noMore = false, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
@@ -51,13 +53,15 @@
     return new Map(list.filter(row => row && /^\d{1,30}$/.test(row.id)).map(row => [row.id, {id: row.id, author: String(row.author || 'X 推文').slice(0, 80)}]));
   }
   function applyHidden(value) {
-    hiddenPosts = readHidden(value);
+    hiddenPosts = readHidden(value); refreshVisibility(); renderHidden();
+  }
+  function refreshVisibility() {
     const viewport = $('.scroll').getBoundingClientRect();
     const anchor = [...groups.values()].filter(g => visible(g) && g.card.isConnected && g.card.getBoundingClientRect().bottom > viewport.top).sort((a, b) => Math.abs(a.card.getBoundingClientRect().top - viewport.top) - Math.abs(b.card.getBoundingClientRect().top - viewport.top))[0]?.card;
     const top = anchor?.getBoundingClientRect().top;
-    for (const g of groups.values()) if (hiddenPosts.has(g.id)) { g.near = false; g.photo.removeAttribute('src'); g.photo.dataset.url = ''; for (const im of g.images) selected.delete(im.url); }
+    for (const g of groups.values()) if (hiddenPosts.has(g.id) || (blockAds && (g.promoted || g.adOnly))) { g.near = false; g.photo.removeAttribute('src'); g.photo.dataset.url = ''; for (const im of g.images) selected.delete(im.url); }
     if (open) { layout(true); updateSelection(); if (anchor?.isConnected) $('.scroll').scrollTop += anchor.getBoundingClientRect().top - top; }
-    renderHidden();
+    updateAdToggle();
   }
   function writeHidden(id, row) {
     const task = hideWrites.catch(() => {}).then(async () => {
@@ -83,8 +87,16 @@
   }
   function manageHidden() { renderHidden(); openModal('.hidemanager'); }
   const hiddenManagerButton = button('已隐藏', 'hidden-manager-button', '查看和恢复拾图隐藏的推文'); hiddenManagerButton.onclick = manageHidden; $('.hint').before(hiddenManagerButton);
-  chrome.storage.local.get(HIDDEN_KEY).then(saved => { hiddenReady = true; applyHidden(saved[HIDDEN_KEY]); if (open) scan(); }).catch(() => { hiddenReady = true; if (open) scan(); });
-  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[HIDDEN_KEY]) applyHidden(changes[HIDDEN_KEY].newValue); });
+  chrome.storage.local.get({[HIDDEN_KEY]: [], blockAds: true}).then(saved => { blockAds = saved.blockAds !== false; hiddenReady = true; applyHidden(saved[HIDDEN_KEY]); if (open) scan(); }).catch(() => { hiddenReady = true; if (open) scan(); });
+  chrome.storage.onChanged.addListener((changes, area) => { if (area !== 'local') return; if (changes[HIDDEN_KEY]) applyHidden(changes[HIDDEN_KEY].newValue); if (changes.blockAds) { blockAds = changes.blockAds.newValue !== false; refreshVisibility(); } });
+  const adToggle = button('广告已屏蔽', 'ad-filter', '自动过滤 X 明确标记的推广和广告；点击切换');
+  $('.speed').before(adToggle);
+  function updateAdToggle() {
+    const count = [...groups.values()].filter(g => g.promoted || g.adOnly).length;
+    adToggle.textContent = blockAds ? '广告已屏蔽' + (count ? ' ' + count : '') : '显示广告';
+    adToggle.setAttribute('aria-pressed', String(blockAds));
+  }
+  adToggle.onclick = async () => { const desired = !blockAds; adToggle.disabled = true; try { await chrome.storage.local.set({blockAds: desired}); blockAds = desired; refreshVisibility(); noMore = false; scan(); } catch { toast('广告过滤设置未保存，请稍后重试'); } finally { adToggle.disabled = false; } };
   const socialPending = new Map(), TEMPLATE_KEY = 'xif-social-templates-v1';
   let templateWrites = Promise.resolve();
   function apiAction(id, kind, desired) {
@@ -201,7 +213,7 @@
     if (msg.type === 'native-action') { nativeAction(msg.id, msg.kind, msg.desired).then(reply, e => reply({ok: false, error: e.message})); return true; }
   });
   const photosOf = g => g.images.filter(im => im.type !== 'video');
-  function visible(g) { return !hiddenPosts.has(g.id) && (filter === 'all' || (filter === 'video' ? g.images.some(im => im.type === 'video') : filter === 'image' ? photosOf(g).length > 0 : g[filter] === true)); }
+  function visible(g) { return !hiddenPosts.has(g.id) && !(blockAds && (g.promoted || g.adOnly)) && (filter === 'all' || (filter === 'video' ? g.images.some(im => im.type === 'video') : filter === 'image' ? photosOf(g).length > 0 : g[filter] === true)); }
   function layout(force = false) {
     const width = $('.scroll').clientWidth || innerWidth, n = Math.max(1, Math.floor((width - 40) / (density + 20)));
     if (!force && n === columns.length) return;
@@ -375,7 +387,7 @@
   }
   function turn(g, delta) { g.index = (g.index + delta + g.images.length) % g.images.length; updateCard(g); scheduleRebalance(); if (fast) prefetch(g); }
   function prefetch(g) {
-    if (!fast || !open) return;
+    if (!fast || !open || !visible(g)) return;
     const im = g.images[g.index]; if (im.type === 'video') return; if (Date.now() - (im.prefetched || 0) < 120000) return; im.prefetched = Date.now();
     message({action: 'prefetch', urls: [im.url]}).catch(() => { im.prefetched = 0; });
     if (g.images.length > 1) { const next = new Image(); next.src = g.images[(g.index + 1) % g.images.length].preview; }
@@ -446,15 +458,26 @@
   function scheduleAnalysis(g) { const urls = photosOf(g).map(im => im.url); if (g.analysisKey === urls.join('|')) return; g.analysisKey = urls.join('|'); analysisQueue.push({g, key: g.analysisKey, urls}); pumpAnalysis(); }
   function pumpAnalysis() {
     while (open && analyzing < 2 && analysisQueue.length) {
-      const {g, key, urls} = analysisQueue.shift(); analyzing++;
+      const {g, key, urls} = analysisQueue.shift(); if (!visible(g)) { g.analysisKey = null; continue; } analyzing++;
       message({action: 'analyze', urls}).then(r => { if (g.analysisKey !== key) return; g.suggestion = r.suggestion; g.stitch.classList.toggle('suggested', r.suggestion.suggested); g.stitch.querySelector('span').textContent = r.suggestion.suggested ? '疑似切片' : '拼接'; g.stitch.title = r.suggestion.suggested ? '边缘连续，点击预览拼接' : '手动拼接这组图片'; }).catch(() => { g.analysisKey = null; }).finally(() => { analyzing--; pumpAnalysis(); });
     }
   }
   function mediaKey(im) { return `${im.type === 'video' ? 'video' : 'image'}:${im.preview ? new URL(im.preview).pathname : im.key || im.order}`; }
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.channel !== 'xif-video-v1' || !Array.isArray(event.data.records)) return;
+    let adsChanged = false;
     for (const record of event.data.records.slice(0, 100)) {
       if (!record || !/^\d+$/.test(record.id) || !Array.isArray(record.media)) continue;
+      if (record.promoted === true) {
+        promotedPosts.add(record.id);
+        for (const g of groups.values()) {
+          const before = visible(g);
+          if (g.id === record.id) g.promoted = true;
+          if (g.sources.has(record.id)) g.sources.set(record.id, true);
+          g.adOnly = [...g.sources.values()].every(Boolean);
+          if (before !== visible(g)) adsChanged = true;
+        }
+      }
       const counts = {...tweetCounts.get(record.id)};
       for (const kind of ['like', 'bookmark']) if (Number.isSafeInteger(record.counts?.[kind]) && record.counts[kind] >= 0) counts[kind] = record.counts[kind];
       tweetCounts.delete(record.id); tweetCounts.set(record.id, counts);
@@ -468,6 +491,7 @@
       const media = record.media.slice(0, 4).filter(m => m && m.type === 'video').map((m, i) => ({type: 'video', key: String(m.key || i).slice(0, 80), gif: m.gif === true, poster: XIFVideo.posterURL(m.poster), variants: XIFVideo.variants(m.variants), width: Math.min(32767, Math.max(1, Number(m.width) || 16)), height: Math.min(32767, Math.max(1, Number(m.height) || 9)), order: Math.min(4, Math.max(1, Number(m.order) || i + 1))}));
       if (media.length) { videoMetadata.delete(record.id); videoMetadata.set(record.id, media); }
     }
+    if (adsChanged) refreshVisibility();
     while (videoMetadata.size > 600) videoMetadata.delete(videoMetadata.keys().next().value);
     while (tweetCounts.size > 600) tweetCounts.delete(tweetCounts.keys().next().value);
     while (tweetStates.size > 600) tweetStates.delete(tweetStates.keys().next().value);
@@ -503,9 +527,18 @@
     if (!open || !hiddenReady || nativeMenu.active) return;
     if (route !== location.href) { route = location.href; near.disconnect(); groups.clear(); selected.clear(); analysisQueue.length = 0; noMore = false; layout(true); updateSelection(); $('.scroll').scrollTop = 0; }
     updateFeedBar();
-    let changed = false;
+    let changed = false, adsChanged = false;
     for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
       const mainPost = postOf(article); if (!mainPost) continue;
+      const advertised = promotedPosts.has(mainPost.id) || XIFAds.articleIsAd(article);
+      // Keep ad status scoped to the outer post: quoted originals can appear organically.
+      if (advertised) for (const g of groups.values()) {
+        const before = visible(g);
+        if (g.id === mainPost.id) g.promoted = true;
+        if (g.sources.has(mainPost.id)) g.sources.set(mainPost.id, true);
+        g.adOnly = [...g.sources.values()].every(Boolean);
+        if (before !== visible(g)) adsChanged = true;
+      }
       const found = new Map();
       for (const img of article.querySelectorAll('[data-testid="tweetPhoto"] img')) {
         if (img.closest('article[data-testid="tweet"]') !== article || img.closest('[data-testid="videoPlayer"], [data-testid="videoComponent"]')) continue;
@@ -521,11 +554,17 @@
         let g = groups.get(post.id);
         if (!g) {
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
+          g.promoted = promotedPosts.has(post.id) || (post.id === mainPost.id && advertised); g.adOnly = advertised; g.sources = new Map([[mainPost.id, advertised]]);
           g.authorURL = authorURL(article, post, mainPost);
           Object.assign(g, tweetStates.get(post.id) || {});
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
         } else {
+          const wasVisible = visible(g);
+          if (promotedPosts.has(post.id) || (post.id === mainPost.id && advertised)) g.promoted = true;
+          g.sources.set(mainPost.id, advertised);
+          g.adOnly = [...g.sources.values()].every(Boolean);
+          if (wasVisible !== visible(g)) adsChanged = true;
           const profile = authorURL(article, post, mainPost); if (profile) { g.authorURL = profile; g.card.querySelector('.author').href = profile; }
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {
@@ -539,10 +578,12 @@
         }
       }
     }
+    if (adsChanged) refreshVisibility();
+    updateAdToggle();
     if (changed) { revision++; noMore = false; updateCount(); if (filter !== 'all') layout(true); else scheduleRebalance(); requestAnimationFrame(loadViewportCovers); }
   }
   function scheduleScan() { if (!open || scanTimer) return; scanTimer = setTimeout(() => { scanTimer = 0; scan(); }, 80); }
-  new MutationObserver(scheduleScan).observe(document.body, {childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'poster', 'data-testid', 'aria-selected']});
+  new MutationObserver(scheduleScan).observe(document.body, {childList: true, subtree: true, attributes: true, characterData: true, attributeFilter: ['src', 'poster', 'data-testid', 'data-promoted', 'aria-label', 'aria-selected']});
   async function more(manual = false) {
     if (loading || !open || feedSwitching || nativeBusy || videoSession || !['all', 'image', 'video'].includes(filter)) return;
     if (manual) noMore = false; if (noMore) return;
