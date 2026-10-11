@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.8</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.9</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -25,11 +25,66 @@
     <section class="viewer hidden" role="dialog" aria-modal="true" aria-label="图片预览"><div class="modalhead"><b class="viewtitle">图片预览</b><span class="viewcount muted"></span><button class="dismiss">关闭 ×</button></div><div class="viewstage"><button class="viewprev" aria-label="上一张">‹</button><img alt="图片放大预览"><button class="viewnext" aria-label="下一张">›</button></div><div class="thumbs"></div><div class="viewfoot"><button class="viewcopy primary">复制 PNG</button><button class="viewsave">保存 PNG</button><button class="viewstitch">拼接这组</button></div></section>
     <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
     <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
-    <div class="toast hidden" role="status" aria-live="polite"></div>`;
+    <section class="hidemanager hidden" role="dialog" aria-modal="true" aria-label="管理拾图隐藏"><div class="modalhead"><b>已隐藏的推文</b><button class="dismiss">关闭 ×</button></div><p class="hide-note">这里管理拾图的本地隐藏。X 的屏蔽、隐藏账号与推荐偏好请在 X 管理。</p><div class="hidden-list"></div></section>
+    <div class="native-shield hidden"></div><div class="menu-fallback hidden" role="menu" aria-label="推文更多选项"></div><div class="toast hidden" role="status" aria-live="polite"></div>`;
   const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map(), tweetStates = new Map();
   let open = false, density = 320, fast = true, filter = 'all', columns = [], heights = [], route = location.href, feedSwitching = false;
   let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, loading = false, noMore = false, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const HIDDEN_KEY = 'xif-hidden-posts-v1';
+  let hiddenPosts = new Map(), hiddenReady = false, hideWrites = Promise.resolve();
+  const nativeMenu = new XIFNativeMenu({article: findArticle, busy: busy => { nativeBusy += busy ? 1 : -1; $('.native-shield').classList.toggle('hidden', !busy); if (!busy) { scheduleScan(); setTimeout(maybeMore, 250); } }, loading: () => toast('正在读取原帖的 X 菜单…'), hide: hidePost, manage: manageHidden, navigate: () => { if (open) toggle(); }});
+  $('.native-shield').onpointerdown = event => { event.preventDefault(); event.stopPropagation(); };
+  $('.native-shield').onclick = event => { event.stopPropagation(); if (!nativeMenu.hasDialog) nativeMenu.close(); };
+  let fallbackAnchor = null;
+  function closeFallback() { $('.menu-fallback').classList.add('hidden'); fallbackAnchor?.setAttribute('aria-expanded', 'false'); fallbackAnchor = null; }
+  function fallbackMenu(g, error) {
+    closeFallback(); fallbackAnchor = g.moreButton; fallbackAnchor.setAttribute('aria-expanded', 'true'); const menu = $('.menu-fallback'); menu.replaceChildren();
+    const note = document.createElement('p'); note.textContent = error; menu.append(note);
+    for (const [label, action] of [['重试 X 原菜单', () => g.moreButton.click()], ['仅在拾图隐藏这条', () => hidePost(g)], ['管理拾图隐藏', manageHidden]]) { const b = button(label, ''); b.setAttribute('role', 'menuitem'); b.onclick = () => { closeFallback(); action(); }; menu.append(b); }
+    menu.classList.remove('hidden'); const a = g.moreButton.getBoundingClientRect(), box = menu.getBoundingClientRect(); menu.style.left = `${Math.max(12, Math.min(innerWidth - box.width - 12, a.right - box.width))}px`; menu.style.top = `${Math.max(12, Math.min(innerHeight - box.height - 12, a.bottom + 6))}px`; menu.querySelector('button').focus();
+  }
+  root.addEventListener('pointerdown', event => { if (fallbackAnchor && !$('.menu-fallback').contains(event.target) && event.target !== fallbackAnchor) closeFallback(); });
+  $('.scroll').addEventListener('scroll', closeFallback, {passive: true});
+  function readHidden(value) {
+    const list = Array.isArray(value) ? value : [];
+    return new Map(list.filter(row => row && /^\d{1,30}$/.test(row.id)).map(row => [row.id, {id: row.id, author: String(row.author || 'X 推文').slice(0, 80)}]));
+  }
+  function applyHidden(value) {
+    hiddenPosts = readHidden(value);
+    const viewport = $('.scroll').getBoundingClientRect();
+    const anchor = [...groups.values()].filter(g => visible(g) && g.card.isConnected && g.card.getBoundingClientRect().bottom > viewport.top).sort((a, b) => Math.abs(a.card.getBoundingClientRect().top - viewport.top) - Math.abs(b.card.getBoundingClientRect().top - viewport.top))[0]?.card;
+    const top = anchor?.getBoundingClientRect().top;
+    for (const g of groups.values()) if (hiddenPosts.has(g.id)) { g.near = false; g.photo.removeAttribute('src'); g.photo.dataset.url = ''; for (const im of g.images) selected.delete(im.url); }
+    if (open) { layout(true); updateSelection(); if (anchor?.isConnected) $('.scroll').scrollTop += anchor.getBoundingClientRect().top - top; }
+    renderHidden();
+  }
+  function writeHidden(id, row) {
+    const task = hideWrites.catch(() => {}).then(async () => {
+      const next = readHidden((await chrome.storage.local.get(HIDDEN_KEY))[HIDDEN_KEY]);
+      if (row) next.set(id, row); else next.delete(id);
+      const value = [...next.values()]; await chrome.storage.local.set({[HIDDEN_KEY]: value}); applyHidden(value);
+    });
+    hideWrites = task; return task;
+  }
+  async function hidePost(g) {
+    try {
+      await writeHidden(g.id, {id: g.id, author: g.author}); toast('已从拾图隐藏这条推文');
+      const undo = button('撤销', 'hide-undo'); undo.onclick = async () => { try { await writeHidden(g.id, null); toast('已恢复这条推文'); } catch { toast('恢复失败，请稍后重试'); } }; $('.toast').append(undo);
+    } catch { toast('隐藏未保存，请稍后重试'); }
+  }
+  function renderHidden() {
+    const list = $('.hidden-list'); list.replaceChildren(); $('.hidden-manager-button').textContent = `已隐藏${hiddenPosts.size ? ` ${hiddenPosts.size}` : ''}`;
+    if (!hiddenPosts.size) { const p = document.createElement('p'); p.className = 'muted'; p.textContent = '还没有隐藏的推文'; list.append(p); }
+    for (const row of [...hiddenPosts.values()].reverse()) {
+      const item = document.createElement('div'); item.className = 'hidden-row'; const label = document.createElement('span'); label.textContent = `${row.author} · ${row.id}`;
+      const restore = button('恢复', ''); restore.onclick = async () => { restore.disabled = true; try { await writeHidden(row.id, null); } catch { restore.disabled = false; toast('恢复失败，请稍后重试'); } }; item.append(label, restore); list.append(item);
+    }
+  }
+  function manageHidden() { renderHidden(); openModal('.hidemanager'); }
+  const hiddenManagerButton = button('已隐藏', 'hidden-manager-button', '查看和恢复拾图隐藏的推文'); hiddenManagerButton.onclick = manageHidden; $('.hint').before(hiddenManagerButton);
+  chrome.storage.local.get(HIDDEN_KEY).then(saved => { hiddenReady = true; applyHidden(saved[HIDDEN_KEY]); if (open) scan(); }).catch(() => { hiddenReady = true; if (open) scan(); });
+  chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes[HIDDEN_KEY]) applyHidden(changes[HIDDEN_KEY].newValue); });
   const socialPending = new Map(), TEMPLATE_KEY = 'xif-social-templates-v1';
   let templateWrites = Promise.resolve();
   function apiAction(id, kind, desired) {
@@ -146,7 +201,7 @@
     if (msg.type === 'native-action') { nativeAction(msg.id, msg.kind, msg.desired).then(reply, e => reply({ok: false, error: e.message})); return true; }
   });
   const photosOf = g => g.images.filter(im => im.type !== 'video');
-  function visible(g) { return filter === 'all' || (filter === 'video' ? g.images.some(im => im.type === 'video') : filter === 'image' ? photosOf(g).length > 0 : g[filter] === true); }
+  function visible(g) { return !hiddenPosts.has(g.id) && (filter === 'all' || (filter === 'video' ? g.images.some(im => im.type === 'video') : filter === 'image' ? photosOf(g).length > 0 : g[filter] === true)); }
   function layout(force = false) {
     const width = $('.scroll').clientWidth || innerWidth, n = Math.max(1, Math.floor((width - 40) / (density + 20)));
     if (!force && n === columns.length) return;
@@ -207,8 +262,9 @@
     $('.empty span').textContent = ['all', 'image', 'video'].includes(filter) ? '等待 X 载入推文，或点击下方继续加载。敏感内容需返回 X 手动展开。' : '当前已收集内容中暂无此项。这里筛选本次信息流，不会导入整个 X 收藏库。';
   }
   function toggle() {
+    nativeMenu.close(); closeFallback();
     open = !open; $('.panel').classList.toggle('hidden', !open); $('.launch').classList.toggle('hidden', open);
-    closeModal('.viewer'); closeModal('.stitcher'); closeModal('.videoviewer');
+    closeModal('.viewer'); closeModal('.stitcher'); closeModal('.videoviewer'); closeModal('.hidemanager');
     if (open) { document.querySelectorAll('article video').forEach(v => v.pause()); updateFeedBar(); layout(); scan(); requestAnimationFrame(loadViewportCovers); setTimeout(maybeMore, 300); }
   }
   $('.launch').onclick = toggle; $('.close').onclick = toggle; $('.helpbtn').onclick = () => $('.help').classList.toggle('hidden');
@@ -281,7 +337,7 @@
   const near = new IntersectionObserver(entries => {
     for (const entry of entries) {
       const g = groups.get(entry.target.dataset.key); if (!g) continue; g.near = entry.isIntersecting;
-      if (entry.isIntersecting && open) {
+      if (entry.isIntersecting && open && visible(g)) {
         const visibleNow = !!entry.rootBounds && entry.boundingClientRect.bottom >= entry.rootBounds.top && entry.boundingClientRect.top <= entry.rootBounds.bottom;
         loadCover(g, visibleNow); if (photosOf(g).length > 1) scheduleAnalysis(g);
       }
@@ -305,7 +361,7 @@
     g.play.classList.toggle('hidden', !isVideo); g.save.classList.toggle('hidden', isVideo); if (!g.copy.disabled) g.copy.textContent = isVideo ? '▶ 播放视频' : '复制 PNG';
     g.stitch.classList.toggle('hidden', photosOf(g).length < 2); updateSocial(g);
     if (g.photo.dataset.url !== (im.preview || '')) { g.photo.removeAttribute('src'); g.photo.dataset.url = ''; g.media.classList.add('loading'); g.loader.textContent = '正在读取图片…'; }
-    if (g.near) loadCover(g, true);
+    if (g.near && visible(g)) loadCover(g, true);
   }
   function updateSocial(g) {
     for (const kind of ['like', 'bookmark']) {
@@ -349,6 +405,8 @@
     g.copy = copy; g.save = save;
     copy.onclick = () => g.images[g.index].type === 'video' ? openVideo(g) : act(copy, 'copy', [g.images[g.index].url]); save.onclick = () => { if (g.images[g.index].type !== 'video') act(save, 'download', [g.images[g.index].url]); }; actions.append(copy, save);
     card.append(media, meta, social, actions);
+    g.moreButton = button('⋯', 'card-more', 'X 更多选项'); g.moreButton.setAttribute('aria-label', '推文更多选项'); g.moreButton.setAttribute('aria-haspopup', 'menu'); g.moreButton.setAttribute('aria-expanded', 'false');
+    g.moreButton.onclick = async event => { event.stopPropagation(); if (g.moreButton.disabled) return; if (fallbackAnchor === g.moreButton) { closeFallback(); return; } closeFallback(); g.moreButton.disabled = true; try { await nativeMenu.open(g, g.moreButton); } catch (e) { fallbackMenu(g, e.message); } finally { g.moreButton.disabled = false; } }; card.append(g.moreButton);
     let hover; card.onpointerenter = () => { hover = setTimeout(() => prefetch(g), 180); }; card.onpointerleave = () => clearTimeout(hover);
     // Native lazy loading and the near-viewport observer keep distant covers light.
     const im = g.images[0]; photo.width = im.width; photo.height = im.height; photo.alt = im.alt;
@@ -442,7 +500,7 @@
     });
   }
   function scan() {
-    if (!open) return;
+    if (!open || !hiddenReady || nativeMenu.active) return;
     if (route !== location.href) { route = location.href; near.disconnect(); groups.clear(); selected.clear(); analysisQueue.length = 0; noMore = false; layout(true); updateSelection(); $('.scroll').scrollTop = 0; }
     updateFeedBar();
     let changed = false;
@@ -496,15 +554,16 @@
       if (revision > initial && $('.scroll').scrollHeight - $('.scroll').scrollTop - $('.scroll').clientHeight > $('.scroll').clientHeight * 2) break;
     }
     loading = false; $('.more').disabled = false; $('.more').textContent = '继续加载内容 ↓';
+    if (nativeBusy || nativeMenu.active) return;
     if (revision === initial) { noMore = true; if (manual) toast('X 暂未返回更多内容，可稍后点击继续加载'); }
     else setTimeout(maybeMore, 180);
   }
   function maybeMore() { const el = $('.scroll'); if (fast && open && ['all', 'image', 'video'].includes(filter) && el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight * 1.8) more(); }
   let coverFrame = 0;
   $('.more').onclick = () => more(true); $('.scroll').addEventListener('scroll', () => { lastGalleryScroll = Date.now(); if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = 0; loadViewportCovers(); maybeMore(); }); scheduleRebalance(650); }, {passive: true});
-  function openModal(selector) { focusBefore = root.activeElement; $(selector).classList.remove('hidden'); $(selector + ' .dismiss').focus(); $('.panel').inert = true; }
+  function openModal(selector) { nativeMenu.close(); closeFallback(); focusBefore = root.activeElement; $(selector).classList.remove('hidden'); $(selector + ' .dismiss').focus(); $('.panel').inert = true; }
   function closeModal(selector) { $(selector).classList.add('hidden'); if (selector === '.viewer') { viewGroup = null; $('.viewstage img').removeAttribute('src'); } else if (selector === '.videoviewer') stopVideo(); else stitchSession = null; $('.panel').inert = false; focusBefore?.focus(); }
-  root.querySelectorAll('.dismiss').forEach(b => b.onclick = () => closeModal(b.closest('.viewer') ? '.viewer' : b.closest('.videoviewer') ? '.videoviewer' : '.stitcher'));
+  root.querySelectorAll('.dismiss').forEach(b => b.onclick = () => closeModal(b.closest('.viewer') ? '.viewer' : b.closest('.videoviewer') ? '.videoviewer' : b.closest('.hidemanager') ? '.hidemanager' : '.stitcher'));
   function openViewer(g) { viewGroup = g; openModal('.viewer'); refreshViewer(); }
   function refreshViewer() {
     resetZoom();
@@ -638,7 +697,9 @@
   $('.stitchsave').onclick = () => { const s = stitchSession; act($('.stitchsave'), 'download', s.images.map(im => im.url), s.mode, s.blend, s.seams); };
   document.addEventListener('keydown', e => {
     if (!open) return;
-    const modal = !$('.videoviewer').classList.contains('hidden') ? '.videoviewer' : !$('.stitcher').classList.contains('hidden') ? '.stitcher' : !$('.viewer').classList.contains('hidden') ? '.viewer' : null;
+    if (fallbackAnchor && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); const anchor = fallbackAnchor; closeFallback(); anchor.focus(); return; }
+    if (nativeMenu.active) { if (e.key === 'Escape' && !nativeMenu.hasDialog) { e.preventDefault(); e.stopPropagation(); nativeMenu.close(); } return; }
+    const modal = !$('.hidemanager').classList.contains('hidden') ? '.hidemanager' : !$('.videoviewer').classList.contains('hidden') ? '.videoviewer' : !$('.stitcher').classList.contains('hidden') ? '.stitcher' : !$('.viewer').classList.contains('hidden') ? '.viewer' : null;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (modal) closeModal(modal); else toggle(); }
     if (viewGroup && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); turn(viewGroup, e.key === 'ArrowLeft' ? -1 : 1); refreshViewer(); }
     if (modal && e.key === 'Tab') { const focusable = [...$(modal).querySelectorAll('button:not(:disabled),a[href],select,input')].filter(el => el.getClientRects().length); const first = focusable[0], last = focusable.at(-1); if (e.shiftKey && root.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && root.activeElement === last) { e.preventDefault(); first.focus(); } }

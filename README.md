@@ -3,7 +3,7 @@
   <h1>拾图 · X Image Flow</h1>
   <p>让美图，连成一片。</p>
   <p>一个让 X 图片与视频更好逛、更好收藏的 Chrome 扩展。</p>
-  <p><b>Manifest V3 · Chrome 116+ · v2.3.8 · 简体中文</b></p>
+  <p><b>Manifest V3 · Chrome 116+ · v2.3.9 · 简体中文</b></p>
 </div>
 
 这是我的第一个 GitHub 项目。从自己在 X 上收图的需求出发，我借助 AI 辅助开发，逐步做出了图片瀑布流、卡牌图集、拼接和原尺寸 PNG 复制功能。
@@ -16,6 +16,7 @@
 | 卡牌图集 | 同一条推文的多张图片叠成一组，左右切换 |
 | 高清看图 | 滚轮缩放、双击放大、拖动查看细节 |
 | 收藏与出处 | 同步点赞、书签到 X，显示可取得的推文计数和引用作者 |
+| 推文更多菜单 | 卡片右上角打开 X 原菜单，保留后续弹窗；本地隐藏支持撤销与恢复 |
 | 历史收藏 | 打开历史喜欢、书签后自动进入拾图，也可返回首页继续收图 |
 | 原尺寸 PNG | 复制到剪贴板或保存为 PNG 文件，方便手动发到 QQ |
 | 图片拼接 | 横拼、竖拼、四宫格，检测重叠，手动调整接缝、顺序和片段 |
@@ -25,7 +26,7 @@
 
 目前通过本地加载安装，尚未上架 Chrome 网上应用店。
 
-**[下载最新安装包](https://github.com/quentinmou2003-arch/x-image-flow/releases/latest)**：下载发布页中的 `x-image-flow-v2.3.8.zip` 并解压，加载包含 `manifest.json` 的目录即可。也可以按下面步骤下载完整源码安装。
+**[下载最新安装包](https://github.com/quentinmou2003-arch/x-image-flow/releases/latest)**：下载发布页中的 `x-image-flow-v2.3.9.zip` 并解压，加载包含 `manifest.json` 的目录即可。也可以按下面步骤下载完整源码安装。
 
 1. 点击仓库上方 **Code → Download ZIP**，解压到一个固定目录。
 2. 打开 Chrome 的 `chrome://extensions`，开启右上角的**开发者模式**。
