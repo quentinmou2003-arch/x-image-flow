@@ -1,5 +1,5 @@
 'use strict';
-importScripts('shared.js');
+importScripts('shared.js', 'native-copy.js');
 let creating;
 async function ensureOffscreen() {
   if ((await chrome.runtime.getContexts({contextTypes: ['OFFSCREEN_DOCUMENT']})).length) return;
@@ -15,6 +15,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.target !== 'worker') return;
   (async () => {
     if (!sender.tab || !/^https:\/\/(x|twitter)\.com\//.test(sender.url || '')) throw Error('不支持的页面');
+    if (msg.action === 'helper-check') return XIFNativeCopy.check();
+    if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
+    if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
+    if (msg.action === 'batch-prepare') {
+      if (!Array.isArray(msg.urls) || msg.urls.length < 2 || msg.urls.length > 4) throw Error('整组图片数量无效');
+      const urls = msg.urls.map(url => XIF.mediaURL(url));
+      if (msg.mode !== undefined && !['horizontal', 'vertical', 'grid'].includes(msg.mode)) throw Error('拼接布局无效');
+      return XIFNativeCopy.prepare(sender.tab.id, urls, msg.mode, msg.blend);
+    }
     if (msg.action === 'tweet-action') {
       throw Error('请返回 X 正常点赞或收藏一次，插件会自动学习网页接口；不会新开标签页');
     }
