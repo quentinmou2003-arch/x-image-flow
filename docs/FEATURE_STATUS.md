@@ -4,6 +4,8 @@
 
 [返回项目首页](../README.md) · [下载当前版本](https://github.com/quentinmou2003-arch/x-image-flow/releases/tag/v2.3.11) · [隐私说明](../PRIVACY.md)
 
+另有独立预发行的 [收藏实验室特别版](../labs/collector/README.md)，本地库、清单与去重能力仅属于该特别版，稳定版 2.3.11 不包含这些新增功能。
+
 本表以仓库中的 Chrome 扩展源码为准，区分功能是否实现、验证到哪一步，以及使用时的限制。**“已实现”表示已有对应代码，不表示所有真实 X 页面都已验证。**
 
 | 实现状态 | 含义 |
@@ -88,7 +90,7 @@
 
 ## 验证说明与源码入口
 
-仓库中的 [npm test](../package.json) 目前包含 **12 项自动测试**，覆盖文件引用与脚本语法、媒体 URL、拼接几何、计数、视频码率规则、推广元数据识别与引用隔离，收图计划、切片完整性、原生复制的原子提交与任务归属，以及模拟网页接口的学习、凭据隔离、成功确认和失败处理。测试文件：[基础测试](../tests/core.test.cjs)、[网页接口测试](../tests/social-api.test.cjs)、[推广识别测试](../tests/ad-filter.test.cjs)、[收图计划测试](../tests/collection.test.cjs)、[原生复制测试](../tests/native-copy.test.cjs)。
+仓库中的 [npm test](../package.json) 稳定版对应 **12 项自动测试**（仓库另有实验版 5 项，共 17 项），覆盖文件引用与脚本语法、媒体 URL、拼接几何、计数、视频码率规则、推广元数据识别与引用隔离，收图计划、切片完整性、原生复制的原子提交与任务归属，以及模拟网页接口的学习、凭据隔离、成功确认和失败处理。测试文件：[基础测试](../tests/core.test.cjs)、[网页接口测试](../tests/social-api.test.cjs)、[推广识别测试](../tests/ad-filter.test.cjs)、[收图计划测试](../tests/collection.test.cjs)、[原生复制测试](../tests/native-copy.test.cjs)。
 
 表中“模拟浏览器”指开发工作区内已完成的 Chromium 扩展与本地构造 X 页面测试；这些浏览器测试脚本目前未随本仓库发布。它们验证交互和处理逻辑，**不等于真实 X 登录账号、QQ 或手机端验收**。仅核对了源码的项目也已单独注明。
 
