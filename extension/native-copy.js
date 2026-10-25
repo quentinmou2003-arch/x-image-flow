@@ -38,10 +38,9 @@
       try {
         const count = mode ? 1 : urls.length;
         await current.connection.call('ping'); await current.connection.call('begin', {count});
-        await ensureOffscreen();
         for (let i = 0; i < count; i++) {
           if (job !== current) throw Error('整组复制已取消');
-          const png = await chrome.runtime.sendMessage({target: 'offscreen', action: 'copy', urls: mode ? urls : [urls[i]], mode, blend});
+          const png = await XIFOffscreen.request({action: 'copy', urls: mode ? urls : [urls[i]], mode, blend});
           if (!png?.ok) throw Error(png?.error || 'PNG 准备失败');
           if (job !== current) throw Error('整组复制已取消');
           await current.connection.call('image', {index: i, data: png.data});

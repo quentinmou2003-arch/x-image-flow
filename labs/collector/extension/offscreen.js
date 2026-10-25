@@ -99,6 +99,7 @@ async function render(urls, mode, preview, auto, overrides) {
 function dataURL(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(Error('预览读取失败')); r.readAsDataURL(blob); }); }
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.target !== 'offscreen' || sender.id !== chrome.runtime.id) return;
+  if (msg.action === 'ready') { reply({ok: true, ready: true}); return; }
   const work = async () => {
     if (msg.action === 'revoke') { URL.revokeObjectURL(msg.url); return {ok: true}; }
     if(msg.action==='local-copy') {

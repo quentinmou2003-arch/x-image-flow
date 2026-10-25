@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const root=path.join(__dirname,'../labs/collector/extension');
 require(path.join(root,'shared.js'));const store=require(path.join(root,'library-store.js')),zip=require(path.join(root,'archive-zip.js'));
 test('collector lab is a separate valid extension and library page files exist',()=>{
- const m=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));assert.equal(m.version,'2.4.0.1');assert.equal(m.version_name,'2.4.0-lab.1');
+ const m=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));assert.equal(m.version,'2.4.0.2');assert.equal(m.version_name,'2.4.0-lab.2');
  for(const file of m.content_scripts.flatMap(s=>s.js).concat(['library.html','library.css','library.js','library-store.js','archive-zip.js','native-copy.js']))assert(fs.existsSync(path.join(root,file)),file);
  for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.js')))new Script(fs.readFileSync(path.join(root,file),'utf8'),{filename:file});
 });

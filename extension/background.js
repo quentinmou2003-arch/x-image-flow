@@ -1,11 +1,5 @@
 'use strict';
-importScripts('shared.js', 'native-copy.js');
-let creating;
-async function ensureOffscreen() {
-  if ((await chrome.runtime.getContexts({contextTypes: ['OFFSCREEN_DOCUMENT']})).length) return;
-  if (!creating) creating = chrome.offscreen.createDocument({url: 'offscreen.html', reasons: ['BLOBS'], justification: 'Prepare and stitch full-size PNG images for the focused page.'}).finally(() => { creating = null; });
-  await creating;
-}
+importScripts('shared.js', 'offscreen-client.js', 'native-copy.js');
 chrome.action.onClicked.addListener(async tab => {
   if (/^https:\/\/(x|twitter)\.com\//.test(tab.url || '')) {
     try { await chrome.tabs.sendMessage(tab.id, {type: 'toggle'}); } catch { await chrome.tabs.reload(tab.id); }
@@ -32,8 +26,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (!Array.isArray(values) || values.length < 1 || values.length > 4) throw Error('图片数量无效');
     const urls = values.map(url => XIF.mediaURL(url));
     if (urls.length > 1 && ['copy', 'download', 'preview'].includes(msg.action) && !['horizontal', 'vertical', 'grid'].includes(msg.mode)) throw Error('拼接布局无效');
-    await ensureOffscreen();
-    const result = await chrome.runtime.sendMessage({target: 'offscreen', action: msg.action, urls, mode: msg.mode, blend: msg.blend, seams: msg.seams});
+    const result = await XIFOffscreen.request({action: msg.action, urls, mode: msg.mode, blend: msg.blend, seams: msg.seams});
     if (!result?.ok) throw Error(result?.error || '图片处理失败');
     if (msg.action === 'download') {
       const base = urls.length > 1 ? `stitch-${Date.now()}` : new URL(urls[0]).pathname.split('/').pop().replace(/[^a-zA-Z0-9_-]/g, '_');

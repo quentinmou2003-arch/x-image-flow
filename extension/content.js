@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.11</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.12</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -141,15 +141,15 @@
     }
   });
   chrome.storage.local.get(TEMPLATE_KEY).then(saved => window.postMessage({channel: 'xif-social-init', templates: Object.values(saved[TEMPLATE_KEY] || {}).slice(0, 4)}, location.origin)).catch(() => {});
-  function disconnected() {
+  function disconnected(background = false) {
     if (!$('.reconnect')) {
       const bar = document.createElement('div'); bar.className = 'reconnect';
       bar.style.cssText = 'padding:12px 24px;background:#071a28;color:#e7e9ea;display:flex;gap:16px;align-items:center;pointer-events:auto';
-      const text = document.createElement('span'); text.textContent = '插件连接已失效，请刷新 X 后继续。刷新会清空本轮收集记录。';
+      const text = document.createElement('span'); text.textContent = (background ? '插件后台未连接，请先在扩展管理页重新加载拾图，再刷新 X。' : '插件连接已失效，请刷新 X 后继续。') + '刷新会清空本轮收集记录。';
       const reload = button('刷新 X', 'primary'); reload.onclick = () => location.reload();
       bar.append(text, reload); $('.panel').prepend(bar);
     }
-    return Error('插件连接已失效，请刷新 X 页面后重试');
+    return Error(background ? '插件后台未连接，请重新加载拾图，再刷新 X 页面' : '插件连接已失效，请刷新 X 页面后重试');
   }
   const message = async data => {
     let r;
@@ -158,11 +158,14 @@
       let timer;
       try { r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : data.action === 'batch-prepare' ? 120000 : 60000); })]); }
       finally { clearTimeout(timer); }
+      if (!r?.ok) throw Error(r?.error || '扩展未响应，请刷新页面');
     } catch (e) {
       if (!globalThis.chrome?.runtime?.id || /Extension context invalidated|context.*invalidated/i.test(e.message)) throw disconnected();
+      if (/Receiving end does not exist|Could not establish connection/i.test(e.message)) throw disconnected(true);
+      if (/message (?:port|channel) closed|message channel.*closed/i.test(e.message)) throw Error('插件连接中断，请先确认操作结果后重试；若持续出现，请重新加载拾图并刷新 X');
       throw e;
     }
-    if (!r?.ok) throw Error(r?.error || '扩展未响应，请刷新页面'); return r;
+    return r;
   };
   function toast(text) { $('.toast').textContent = text; $('.toast').classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('.toast').classList.add('hidden'), 5500); }
   function button(label, className, title) { const b = document.createElement('button'); b.className = className; b.textContent = label; if (title) b.title = title; return b; }

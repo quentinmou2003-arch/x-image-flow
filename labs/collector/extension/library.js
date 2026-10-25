@@ -2,7 +2,7 @@
   'use strict';
   const $=s=>document.querySelector(s), objectURLs=new Set();
   let entries=[],pageSize=50,busy=false,selected=null,timer,refreshTimer;
-  async function message(data){const result=await chrome.runtime.sendMessage({target:'worker',...data});if(!result?.ok)throw Error(result?.error||'扩展未响应');return result;}
+  async function message(data){try{const result=await chrome.runtime.sendMessage({target:'worker',...data});if(!result?.ok)throw Error(result?.error||'扩展未响应');return result;}catch(e){if(/Receiving end does not exist|Could not establish connection|Extension context invalidated/i.test(e.message))throw Error('插件后台未连接，请重新加载拾图，再重新打开本地库');throw e;}}
   function notice(text){clearTimeout(timer);$('#notice').textContent=text;$('#notice').hidden=false;timer=setTimeout(()=>$('#notice').hidden=true,5000);}
   function button(text,cls,action){const b=document.createElement('button');b.textContent=text;b.className=cls||'';b.onclick=async()=>{b.disabled=true;try{await action();}catch(e){notice(e.message);}finally{b.disabled=false;}};return b;}
   const extension=mime=>({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif'}[mime]||'bin');
@@ -56,7 +56,7 @@
   $('#state').onchange=()=>{pageSize=50;render();};$('#more').onclick=()=>{pageSize+=50;render();};
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
     const assets=await XIFLibrary.all('assets'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)]));
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.1',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.2',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
     const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+a.hash+'.'+extension(a.mime),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};

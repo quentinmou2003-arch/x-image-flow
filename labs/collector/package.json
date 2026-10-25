@@ -1,6 +1,6 @@
 {
   "name": "x-image-flow-collector-lab",
-  "version": "2.4.0-lab.1",
+  "version": "2.4.0-lab.2",
   "private": true,
   "scripts": {"test": "node --test ../../tests/lab.test.cjs"}
 }

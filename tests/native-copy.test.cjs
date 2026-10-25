@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 test('native batches are atomic, ordered, owner-bound and discarded after failures',async()=>{
  const operations=[],exports=[],ports=[];let failImage=false;
  const chrome={runtime:{connectNative:()=>{const listeners=[];const p={onMessage:{addListener:f=>listeners.push(f)},onDisconnect:{addListener:()=>{}},closed:false,disconnect(){this.closed=true},postMessage(m){operations.push(m.op);queueMicrotask(()=>listeners.forEach(f=>f({...m,ok:!(failImage&&m.op==='image'),count:2,error:'image failed'})))} };ports.push(p);return p;},sendMessage:async m=>{exports.push(m.urls);return {ok:true,data:'PNG'}}},tabs:{onRemoved:{addListener:()=>{}}}};
- const context={chrome,crypto:require('node:crypto').webcrypto,ensureOffscreen:async()=>{},setTimeout,clearTimeout,Map,Promise,Error};
+ const context={chrome,crypto:require('node:crypto').webcrypto,XIFOffscreen:{request:m=>chrome.runtime.sendMessage(m)},setTimeout,clearTimeout,Map,Promise,Error};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../extension/native-copy.js'),'utf8'),context);
  const api=context.XIFNativeCopy,prepared=await api.prepare(1,['a','b']);
  assert.equal(operations.includes('commit'),false);assert.deepEqual(JSON.parse(JSON.stringify(exports)),[['a'],['b']]);
