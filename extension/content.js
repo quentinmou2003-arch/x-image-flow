@@ -15,12 +15,12 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.13</div></div>
-        <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.14</div></div>
+        <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
       <div class="help hidden">复制 PNG → 在电脑 QQ 的手机会话中 Ctrl+V 发送。需要保留文件：保存 PNG 后作为文件发送。<br>同一推文的图片叠成卡牌，左右切换；点击「拼接」合成整张图。左上角勾选支持跨推文拼接 2–4 张。</div>
-      <main class="scroll"><div class="intro"><div><b>让美图，连成一片。</b><span class="count">0 组 · 0 张</span></div><span class="hint">轻量图片预览 · 视频点击播放 · 一键收藏</span></div><div class="grid"></div><div class="empty"><b>图片与视频，都在这里。</b><span>等待 X 推文载入，或点击下方继续加载。<br>敏感内容需返回 X 手动展开。</span></div><button class="more">继续加载内容 ↓</button><div class="foot">视频先加载封面，点击后低清播放 · 图片导出保留原尺寸</div></main>
+      <main class="scroll"><div class="intro"><div><b>让美图，连成一片。</b><span class="count">0 组 · 0 张</span></div><span class="hint">轻量图片预览 · 视频点击播放 · 一键收藏</span></div><div class="grid"></div><div class="empty"><b>图片与视频，都在这里。</b><span>打开拾图会自动读取内容，接近底部时继续加载。<br>敏感内容需返回 X 手动展开。</span></div><button class="more">已开启自动续载 · 立即加载</button><div class="foot">视频先加载封面，点击后低清播放 · 图片导出保留原尺寸</div></main>
     </section>
     <section class="viewer hidden" role="dialog" aria-modal="true" aria-label="图片预览"><div class="modalhead"><b class="viewtitle">图片预览</b><span class="viewcount muted"></span><button class="dismiss">关闭 ×</button></div><div class="viewstage"><button class="viewprev" aria-label="上一张">‹</button><img alt="图片放大预览"><button class="viewnext" aria-label="下一张">›</button></div><div class="thumbs"></div><div class="viewfoot"><button class="viewcopy primary">复制 PNG</button><button class="viewsave">保存 PNG</button><button class="viewstitch">拼接这组</button></div></section>
     <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
@@ -35,7 +35,7 @@
   const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map(), tweetStates = new Map();
   let returnTarget = null;
   let open = false, density = 320, fast = true, filter = 'all', columns = [], heights = [], route = location.href, feedSwitching = false;
-  let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, loading = false, noMore = false, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
+  let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
   const HIDDEN_KEY = 'xif-hidden-posts-v1';
   let hiddenPosts = new Map(), hiddenReady = false, hideWrites = Promise.resolve();
@@ -100,7 +100,7 @@
     adToggle.textContent = blockAds ? '广告已屏蔽' + (count ? ' ' + count : '') : '显示广告';
     adToggle.setAttribute('aria-pressed', String(blockAds));
   }
-  adToggle.onclick = async () => { const desired = !blockAds; adToggle.disabled = true; try { await chrome.storage.local.set({blockAds: desired}); blockAds = desired; refreshVisibility(); noMore = false; scan(); } catch { toast('广告过滤设置未保存，请稍后重试'); } finally { adToggle.disabled = false; } };
+  adToggle.onclick = async () => { const desired = !blockAds; adToggle.disabled = true; try { await chrome.storage.local.set({blockAds: desired}); blockAds = desired; refreshVisibility(); autoLoader.progress(); scan(); } catch { toast('广告过滤设置未保存，请稍后重试'); } finally { adToggle.disabled = false; } };
   const socialPending = new Map(), TEMPLATE_KEY = 'xif-social-templates-v1';
   let templateWrites = Promise.resolve();
   function apiAction(id, kind, desired) {
@@ -279,13 +279,13 @@
     const list = [...groups.values()].filter(visible), photos = list.reduce((n, g) => n + photosOf(g).length, 0), videos = list.reduce((n, g) => n + g.images.length - photosOf(g).length, 0);
     $('.count').textContent = `${list.length} 组 · ${photos} 张${videos ? ` · ${videos} 个视频` : ''}`;
     $('.empty').classList.toggle('hidden', list.length > 0);
-    $('.empty span').textContent = ['all', 'image', 'video'].includes(filter) ? '等待 X 载入推文，或点击下方继续加载。敏感内容需返回 X 手动展开。' : '当前已收集内容中暂无此项。这里筛选本次信息流，不会导入整个 X 收藏库。';
+    $('.empty span').textContent = ['all', 'image', 'video'].includes(filter) ? '正在自动读取 X 推文，接近底部时会继续加载。敏感内容需返回 X 手动展开。' : '当前已收集内容中暂无此项。这里筛选本次信息流，不会导入整个 X 收藏库。';
   }
   function toggle() {
     nativeMenu.close(); closeFallback();
     if (!open) returnTarget ||= {href: location.href, x: scrollX, y: scrollY};
     else returnTarget = null;
-    open = !open; updateNavigation(); $('.panel').classList.toggle('hidden', !open); $('.launch').classList.toggle('hidden', open);
+    open = !open; if (open) autoLoader.start(); else autoLoader.stop(); updateNavigation(); $('.panel').classList.toggle('hidden', !open); $('.launch').classList.toggle('hidden', open);
     closeModal('.viewer'); closeModal('.stitcher'); closeModal('.videoviewer'); closeModal('.hidemanager');
     if (open) { document.querySelectorAll('article video').forEach(v => v.pause()); updateFeedBar(); layout(); scan(); requestAnimationFrame(loadViewportCovers); setTimeout(maybeMore, 300); }
   }
@@ -315,7 +315,7 @@
   chrome.storage.local.get({ordered: true, autoCopy: true}).then(p => { ordered = p.ordered !== false; autoCopy = p.autoCopy !== false; orderSelect.value = ordered ? 'ordered' : 'waterfall'; updateAutoCopy(); if (open) layout(true); }).catch(() => {});
   $('.density').onchange = e => { density = Number(e.target.value); chrome.storage.local.set({density}); layout(true); };
   function updateSpeed() { $('.speed').textContent = fast ? 'ϟ 极速预取' : '按需加载'; $('.speed').setAttribute('aria-pressed', String(fast)); }
-  $('.speed').onclick = () => { fast = !fast; updateSpeed(); chrome.storage.local.set({fast}); if (fast) maybeMore(); };
+  $('.speed').onclick = () => { fast = !fast; updateSpeed(); chrome.storage.local.set({fast}); maybeMore(); };
   function openHistory(kind) {
     if (kind === 'bookmark') { navigateHistory('/i/bookmarks'); return; }
     const profile = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
@@ -387,14 +387,14 @@
     if (feedSwitching) return; const tab = nativeFeedTab(kind);
     if (!tab) { updateFeedBar(); toast(location.pathname.startsWith('/home') ? 'X 主页标签尚未载入，请稍后再点' : '请先打开 X 主页'); return; }
     if (feedSelected(tab)) { updateFeedBar('当前已是这个来源 · 已收集内容仍保留'); return; }
-    feedSwitching = true; noMore = false; updateFeedBar(`正在切换到${kind === 'for-you' ? '为你推荐' : '正在关注'}…`); tab.click();
+    feedSwitching = true; autoLoader.progress(); updateFeedBar(`正在切换到${kind === 'for-you' ? '为你推荐' : '正在关注'}…`); tab.click();
     let selected = false;
     for (let i = 0; i < 40; i++) { await wait(100); selected = feedSelected(nativeFeedTab(kind)); if (selected) break; }
     feedSwitching = false; scan(); updateFeedBar(selected ? `已切换 · 正在收集${kind === 'for-you' ? '为你推荐' : '正在关注'}内容` : 'X 未确认切换，请稍后重试');
     if (selected) { toast(`已切换到${kind === 'for-you' ? '为你推荐' : '正在关注'} · 图库无需关闭`); setTimeout(maybeMore, 250); }
   }
   root.querySelectorAll('[data-feed]').forEach(button => button.onclick = () => switchFeed(button.dataset.feed));
-  new ResizeObserver(() => { if (open) layout(); }).observe($('.scroll'));
+  new ResizeObserver(() => { if (open) { layout(); maybeMore(); } }).observe($('.scroll'));
   const near = new IntersectionObserver(entries => {
     for (const entry of entries) {
       const g = groups.get(entry.target.dataset.key); if (!g) continue; g.near = entry.isIntersecting;
@@ -630,7 +630,7 @@
   }
   function scan() {
     if (!open || !hiddenReady || nativeMenu.active) return;
-    if (route !== location.href) { route = location.href; near.disconnect(); groups.clear(); selected.clear(); analysisQueue.length = 0; noMore = false; layout(true); updateSelection(); $('.scroll').scrollTop = 0; }
+    if (route !== location.href) { route = location.href; near.disconnect(); groups.clear(); selected.clear(); analysisQueue.length = 0; autoLoader.progress(); layout(true); updateSelection(); $('.scroll').scrollTop = 0; }
     updateFeedBar();
     let changed = false, adsChanged = false;
     for (const article of document.querySelectorAll('article[data-testid="tweet"]')) {
@@ -685,26 +685,48 @@
     }
     if (adsChanged) refreshVisibility();
     updateAdToggle();
-    if (changed) { revision++; noMore = false; updateCount(); if (filter !== 'all') layout(true); else scheduleRebalance(); requestAnimationFrame(loadViewportCovers); }
+    if (changed) { revision++; autoLoader.progress(); updateCount(); if (filter !== 'all') layout(true); else scheduleRebalance(); requestAnimationFrame(loadViewportCovers); }
   }
   function scheduleScan() { if (!open || scanTimer) return; scanTimer = setTimeout(() => { scanTimer = 0; scan(); }, 80); }
   new MutationObserver(scheduleScan).observe(document.body, {childList: true, subtree: true, attributes: true, characterData: true, attributeFilter: ['src', 'poster', 'data-testid', 'data-promoted', 'aria-label', 'aria-selected']});
-  async function more(manual = false) {
-    if (loading || !open || feedSwitching || nativeBusy || videoSession || !['all', 'image', 'video'].includes(filter)) return;
-    if (manual) noMore = false; if (noMore) return;
-    loading = true; $('.more').disabled = true; $('.more').textContent = '正在预取下一屏…';
-    const initial = revision, startRoute = location.href;
-    for (let i = 0; i < 4 && open && location.href === startRoute && !nativeBusy && !videoSession; i++) {
-      const previous = revision; window.scrollBy(0, Math.max(400, window.innerHeight * .8));
-      for (let tick = 0; tick < 9; tick++) { await wait(100); if (!open || location.href !== startRoute) break; scan(); if (tick >= 1 && revision > previous) break; }
-      if (revision > initial && $('.scroll').scrollHeight - $('.scroll').scrollTop - $('.scroll').clientHeight > $('.scroll').clientHeight * 2) break;
-    }
-    loading = false; $('.more').disabled = false; $('.more').textContent = '继续加载内容 ↓';
-    if (nativeBusy || nativeMenu.active) return;
-    if (revision === initial) { noMore = true; if (manual) toast('X 暂未返回更多内容，可稍后点击继续加载'); }
-    else setTimeout(maybeMore, 180);
+  function loadAllowed() {
+    return open && !document.hidden && navigator.onLine !== false && !feedSwitching && !nativeBusy && !nativeMenu.active && !videoSession && !collecting && !$('.panel').inert && ['all', 'image', 'video'].includes(filter);
   }
-  function maybeMore() { const el = $('.scroll'); if (fast && open && ['all', 'image', 'video'].includes(filter) && el.scrollHeight - el.scrollTop - el.clientHeight < el.clientHeight * 1.8) more(); }
+  function needsMore() { const el = $('.scroll'); return el.scrollHeight - el.scrollTop - el.clientHeight < Math.max(600, el.clientHeight * (fast ? 1.8 : 1.2)); }
+  async function scrollSource(current) {
+    const scrolling = document.scrollingElement || document.documentElement;
+    let target = scrolling;
+    const start = document.querySelector('article[data-testid="tweet"]') || document.querySelector('[data-testid="primaryColumn"]') || document.querySelector('main');
+    for (let parent = start?.parentElement; parent && parent !== document.body; parent = parent.parentElement) {
+      if (parent.clientHeight > 200 && parent.scrollHeight > parent.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(parent).overflowY)) { target = parent; break; }
+    }
+    const max = Math.max(0, target.scrollHeight - target.clientHeight), before = target.scrollTop;
+    const step = Math.max(400, (target === scrolling ? innerHeight : target.clientHeight) * .8);
+    if (max > 0 && before >= max - 2) { target.scrollTop = Math.max(0, before - 72); await wait(40); }
+    if (!current()) return;
+    target.scrollTop = Math.min(max, before + step);
+  }
+  async function loadNext(current) {
+    const initial = revision, startRoute = location.href;
+    for (let i = 0; i < 4 && current() && location.href === startRoute; i++) {
+      const previous = revision; await scrollSource(() => current() && location.href === startRoute);
+      for (let tick = 0; tick < 9; tick++) { await wait(100); if (!current() || location.href !== startRoute) break; scan(); if (tick >= 1 && revision > previous) break; }
+      if (!needsMore()) break;
+    }
+    return {progress: revision > initial};
+  }
+  const autoLoader = new XIFAutoLoader({allowed: loadAllowed, needed: needsMore, load: loadNext, state: state => {
+    $('.more').disabled = state === 'loading';
+    $('.more').textContent = state === 'loading' ? '正在自动加载…' : state === 'waiting' ? 'X 暂无新内容，将自动重试 · 立即重试' : '已开启自动续载 · 立即加载';
+    $('.more').title = '打开拾图自动加载，接近底部时继续；X 暂无内容时稍后自动重试';
+  }});
+  function more(manual = false) { autoLoader.wake(manual); }
+  function maybeMore() { autoLoader.wake(); }
+  const loadSentinel = new IntersectionObserver(entries => { if (entries.some(entry => entry.isIntersecting)) maybeMore(); }, {root: $('.scroll'), rootMargin: '900px 0px'});
+  loadSentinel.observe($('.more'));
+  document.addEventListener('visibilitychange', maybeMore); window.addEventListener('online', maybeMore);
+  $('.scroll').addEventListener('wheel', event => { if (event.deltaY > 0) maybeMore(); }, {passive: true});
+  $('.scroll').addEventListener('touchmove', maybeMore, {passive: true});
   let coverFrame = 0;
   $('.more').onclick = () => more(true); $('.scroll').addEventListener('scroll', () => { lastGalleryScroll = Date.now(); if (!coverFrame) coverFrame = requestAnimationFrame(() => { coverFrame = 0; loadViewportCovers(); maybeMore(); }); scheduleRebalance(650); }, {passive: true});
   function openModal(selector) { nativeMenu.close(); closeFallback(); focusBefore = root.activeElement; $(selector).classList.remove('hidden'); $(selector + ' .dismiss').focus(); $('.panel').inert = true; }
