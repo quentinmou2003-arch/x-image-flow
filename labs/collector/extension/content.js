@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.2</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.3</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载下一屏；悬停时预取原图" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -34,6 +34,7 @@
   const promotedPosts = new Set();
   let blockAds = true;
   const groups = new Map(), selected = new Map(), videoMetadata = new Map(), tweetCounts = new Map(), tweetStates = new Map();
+  let returnTarget = null;
   let open = false, density = 320, fast = true, filter = 'all', columns = [], heights = [], route = location.href, feedSwitching = false;
   let scanTimer = 0, toastTimer, rebalanceTimer, lastGalleryScroll = 0, loading = false, noMore = false, revision = 0, nativeBusy = 0, viewGroup = null, stitchSession = null, focusBefore, videoSession = null;
   const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -283,11 +284,18 @@
   }
   function toggle() {
     nativeMenu.close(); closeFallback();
-    open = !open; $('.panel').classList.toggle('hidden', !open); $('.launch').classList.toggle('hidden', open);
+    if (!open) returnTarget ||= {href: location.href, x: scrollX, y: scrollY};
+    else returnTarget = null;
+    open = !open; updateNavigation(); $('.panel').classList.toggle('hidden', !open); $('.launch').classList.toggle('hidden', open);
     closeModal('.viewer'); closeModal('.stitcher'); closeModal('.videoviewer'); closeModal('.hidemanager');
     if (open) { document.querySelectorAll('article video').forEach(v => v.pause()); updateFeedBar(); layout(); scan(); requestAnimationFrame(loadViewportCovers); setTimeout(maybeMore, 300); }
   }
-  $('.launch').onclick = toggle; $('.close').onclick = toggle; $('.helpbtn').onclick = () => $('.help').classList.toggle('hidden');
+  $('.launch').onclick = toggle; $('.close').onclick = () => {
+    const target = XIFNavigation.restore(returnTarget, location.origin);
+    if (open) toggle();
+    if (target && target.href !== location.href) location.assign(target.href);
+    else if (target) window.scrollTo(target.x, target.y);
+  }; $('.helpbtn').onclick = () => $('.help').classList.toggle('hidden');
   chrome.storage.local.get({density: 320, fast: true}).then(p => { density = [230, 320, 440].includes(p.density) ? p.density : 320; fast = p.fast !== false; $('.density').value = String(density); updateSpeed(); if (open) layout(); }).catch(() => {});
   const orderSelect = document.createElement('select'); orderSelect.className = 'gallery-order'; orderSelect.setAttribute('aria-label', '收图排列');
   for (const [value, label] of [['ordered', '顺序收图'], ['waterfall', '瀑布流']]) { const option = document.createElement('option'); option.value = value; option.textContent = label; orderSelect.append(option); }
@@ -320,7 +328,7 @@
   }
   function navigateHistory(path) {
     if (location.pathname === path) { filter = 'all'; layout(true); updateHistoryTabs(); return; }
-    try { sessionStorage.setItem('xif-history-open', JSON.stringify({path, time: Date.now()})); }
+    try { sessionStorage.setItem('xif-history-open', JSON.stringify({path, time: Date.now(), returnTo: returnTarget})); }
     catch { toast('无法保存图库状态，请允许此站点使用本地存储后重试'); return; }
     location.assign(`${location.origin}${path}`);
   }
@@ -330,10 +338,27 @@
     $('.intro b').textContent = history === 'bookmark' ? '历史书签' : history === 'like' ? '历史喜欢' : '让美图，连成一片。';
     $('.home-gallery').classList.toggle('hidden', /^\/(home)?\/?$/.test(location.pathname));
     $('.tab[data-filter="all"]').textContent = history ? '本页全部' : '全部';
+    updateNavigation();
   }
   const homeGallery = button('← 回首页收新图', 'home-gallery', '返回 X 主页并保持拾图模式');
   homeGallery.onclick = () => navigateHistory('/home');
-  $('.intro').prepend(homeGallery);
+  const profileHome = button('', 'profile-home hidden');
+  const galleryNavigation = document.createElement('div'); galleryNavigation.className = 'gallery-navigation';
+  galleryNavigation.append(profileHome, homeGallery); $('.intro').prepend(galleryNavigation);
+  function updateNavigation() {
+    const context = XIFNavigation.describe(returnTarget?.href || location.href, location.origin);
+    $('.close').textContent = context?.label || '返回原页面'; $('.close').title = context?.title || '关闭拾图';
+    profileHome.classList.toggle('hidden', !context?.profileURL);
+    profileHome.textContent = context?.handle ? '@' + context.handle + ' 主页' : '';
+    profileHome.title = context?.handle ? '退出拾图，在当前标签页打开 @' + context.handle + ' 的主页' : '';
+    galleryNavigation.classList.toggle('hidden', !context?.profileURL && /^\/(home)?\/?$/.test(location.pathname));
+  }
+  profileHome.onclick = () => {
+    const context = XIFNavigation.describe(returnTarget?.href || location.href, location.origin);
+    if (!context?.profileURL) return;
+    if (open) toggle();
+    if (location.href !== context.profileURL && location.href !== context.profileURL + '/') location.assign(context.profileURL);
+  };
   root.querySelectorAll('.tab').forEach(b => b.onclick = () => {
     if (['like', 'bookmark'].includes(b.dataset.filter)) { openHistory(b.dataset.filter); return; }
     filter = b.dataset.filter; updateHistoryTabs(); layout(true); $('.scroll').scrollTop = 0;
@@ -844,7 +869,9 @@
   try {
     const pending = JSON.parse(sessionStorage.getItem('xif-history-open') || 'null');
     sessionStorage.removeItem('xif-history-open');
-    if (pending && pending.path === location.pathname && Date.now() - pending.time >= 0 && Date.now() - pending.time < 120000) toggle();
+    if (pending && pending.path === location.pathname && Date.now() - pending.time >= 0 && Date.now() - pending.time < 120000) {
+      returnTarget = XIFNavigation.restore(pending.returnTo, location.origin); toggle();
+    }
   } catch { /* A normal visit still starts with the launch button. */ }
   updateHistoryTabs();
 })();
