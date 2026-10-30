@@ -34,7 +34,7 @@
     await starting;
   }
   async function request(data) {
-    if (!['copy', 'download', 'preview', 'analyze', 'prefetch', 'local-copy'].includes(data.action)) throw Error('不支持恢复此操作');
+    if (!['copy', 'download', 'preview', 'analyze', 'prefetch', 'local-copy', 'gif'].includes(data.action)) throw Error('不支持恢复此操作');
     for (let attempt = 0; attempt < 2; attempt++) {
       await ensure();
       try {

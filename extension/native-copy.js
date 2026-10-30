@@ -31,16 +31,18 @@
   }
   globalThis.XIFNativeCopy = {
     async check() { const connection = connect(); try { return await connection.call('ping'); } finally { connection.close(); } },
-    async prepare(tabId, urls, mode, blend) {
+    async prepare(tabId, urls, mode, blend, provider, requireGIF = false) {
       if (job) throw Error('上一组还在复制，请稍后重试');
       const current = {id: crypto.randomUUID(), tabId, connection: connect(), ready: false};
-      job = current; current.timer = setTimeout(() => discard(current), 125000);
+      job = current; current.timer = setTimeout(() => discard(current), 240000);
       try {
         const count = mode ? 1 : urls.length;
-        await current.connection.call('ping'); await current.connection.call('begin', {count});
+        const capability = await current.connection.call('ping');
+        if (requireGIF && capability.gifClipboard !== true) throw Error('请运行新版安装包 native 文件夹中的安装小助手.cmd，更新 GIF 复制支持');
+        await current.connection.call('begin', {count});
         for (let i = 0; i < count; i++) {
           if (job !== current) throw Error('整组复制已取消');
-          const png = await XIFOffscreen.request({action: 'copy', urls: mode ? urls : [urls[i]], mode, blend});
+          const png = provider ? await provider(i) : await XIFOffscreen.request({action: 'copy', urls: mode ? urls : [urls[i]], mode, blend});
           if (!png?.ok) throw Error(png?.error || 'PNG 准备失败');
           if (job !== current) throw Error('整组复制已取消');
           await current.connection.call('image', {index: i, data: png.data});
@@ -49,6 +51,7 @@
         return {ok: true, jobId: current.id, count};
       } catch (e) { discard(current); throw e; }
     },
+    async prepareGIF(tabId, url) { return this.prepare(tabId, [url], undefined, false, () => XIFOffscreen.request({action: 'gif', url}), true); },
     async commit(tabId, id) {
       const current = job;
       if (!current || current.tabId !== tabId || current.id !== id || !current.ready) throw Error('整组复制任务已失效，请重试');

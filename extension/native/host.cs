@@ -7,7 +7,7 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using System.Drawing;
 
-// Native Messaging: no network, no QQ automation, only PNG files and clipboard.
+// Native Messaging: no network, no QQ automation; PNG/GIF files and clipboard only.
 class XIFClipboardHost {
     static readonly string Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "XImageFlowClipboard"));
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 60 * 1024 * 1024, RecursionLimit = 20 };
@@ -45,7 +45,7 @@ class XIFClipboardHost {
     static int BigInt(byte[] data, int offset) { return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]; }
     static object Handle(Dictionary<string, object> message) {
         string request = Text(message, "requestId"), operation = Text(message, "op");
-        if (operation == "ping") return new { ok = true, requestId = request, version = "1.0.0" };
+        if (operation == "ping") return new { ok = true, requestId = request, version = "1.1.0", gifClipboard = true };
         if (operation == "begin") {
             Reset(); expected = Number(message, "count"); if (expected < 1 || expected > 4) throw new Exception("图片数量应为 1–4 张");
             CleanOld(); folder = Path.Combine(Root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
@@ -55,6 +55,23 @@ class XIFClipboardHost {
             int index = Number(message, "index");
             if (!Owned(folder) || index < 0 || index >= expected || files.ContainsKey(index)) throw new Exception("图片顺序无效");
             string data = Text(message, "data"), prefix = "data:image/png;base64,";
+            if (data.StartsWith("data:image/gif;base64,", StringComparison.Ordinal)) {
+                if (data.Length > 57 * 1024 * 1024) throw new Exception("GIF 数据过大");
+                byte[] gif = Convert.FromBase64String(data.Substring("data:image/gif;base64,".Length));
+                if (gif.Length < 14 || gif.Length > 40 * 1024 * 1024 || (Encoding.ASCII.GetString(gif, 0, 6) != "GIF89a" && Encoding.ASCII.GetString(gif, 0, 6) != "GIF87a")) throw new Exception("GIF 文件头无效");
+                int w = gif[6] | (gif[7] << 8), h = gif[8] | (gif[9] << 8);
+                if (w < 1 || h < 1 || w > 32767 || h > 32767 || (long)w * h > 100000000) throw new Exception("GIF 尺寸过大");
+                using (var input = new MemoryStream(gif))
+                using (var image = Image.FromStream(input, true, true)) {
+                    if (image.RawFormat.Guid != System.Drawing.Imaging.ImageFormat.Gif.Guid) throw new Exception("不是有效的 GIF");
+                    int frames = image.GetFrameCount(System.Drawing.Imaging.FrameDimension.Time);
+                    if (pixels + (long)w * h * frames > 100000000) throw new Exception("GIF 总帧尺寸过大");
+                    pixels += (long)w * h * frames;
+                }
+                string gifFile = Path.Combine(folder, (index + 1).ToString("D2") + ".gif");
+                File.WriteAllBytes(gifFile, gif); files.Add(index, gifFile);
+                return new { ok = true, requestId = request };
+            }
             if (!data.StartsWith(prefix, StringComparison.Ordinal) || data.Length > 57 * 1024 * 1024) throw new Exception("PNG 数据无效或过大");
             byte[] bytes = Convert.FromBase64String(data.Substring(prefix.Length));
             byte[] signature = {137, 80, 78, 71, 13, 10, 26, 10};
@@ -73,14 +90,18 @@ class XIFClipboardHost {
             var paths = new StringCollection(); foreach (string file in files.Values) paths.Add(file);
             var clipboard = new DataObject(); clipboard.SetFileDropList(paths);
             // Prefer ordinary image paste for a stitched PNG while retaining original PNG.
-            if (expected == 1) {
+            if (expected == 1 && Path.GetExtension(files[0]) == ".png") {
                 using (var image = Image.FromFile(files[0]))
                 using (var bitmap = new Bitmap(image)) {
                     clipboard.SetImage(bitmap);
                     clipboard.SetData("PNG", false, new MemoryStream(File.ReadAllBytes(files[0])));
                     Clipboard.SetDataObject(clipboard, true, 3, 100);
                 }
-            } else Clipboard.SetDataObject(clipboard, true, 3, 100);
+            } else {
+                // An animation must never advertise a flattened Bitmap/PNG representation.
+                if (expected == 1 && Path.GetExtension(files[0]) == ".gif") clipboard.SetData("GIF", false, new MemoryStream(File.ReadAllBytes(files[0])));
+                Clipboard.SetDataObject(clipboard, true, 3, 100);
+            }
             committed = true;
             return new { ok = true, requestId = request, count = expected };
         }

@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.14</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.15</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -24,7 +24,7 @@
     </section>
     <section class="viewer hidden" role="dialog" aria-modal="true" aria-label="图片预览"><div class="modalhead"><b class="viewtitle">图片预览</b><span class="viewcount muted"></span><button class="dismiss">关闭 ×</button></div><div class="viewstage"><button class="viewprev" aria-label="上一张">‹</button><img alt="图片放大预览"><button class="viewnext" aria-label="下一张">›</button></div><div class="thumbs"></div><div class="viewfoot"><button class="viewcopy primary">复制 PNG</button><button class="viewsave">保存 PNG</button><button class="viewstitch">拼接这组</button></div></section>
     <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
-    <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
+    <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><button class="videogifcopy primary hidden">复制 GIF</button><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
     <section class="hidemanager hidden" role="dialog" aria-modal="true" aria-label="管理拾图隐藏"><div class="modalhead"><b>已隐藏的推文</b><button class="dismiss">关闭 ×</button></div><p class="hide-note">这里管理拾图的本地隐藏。X 的屏蔽、隐藏账号与推荐偏好请在 X 管理。</p><div class="hidden-list"></div></section>
     <div class="native-shield hidden"></div><div class="menu-fallback hidden" role="menu" aria-label="推文更多选项"></div><div class="toast hidden" role="status" aria-live="polite"></div>`;
   let ordered = true, layoutColumns = 0, autoCopy = true, collecting = false, collectingGroup = null;
@@ -157,7 +157,7 @@
     try {
       if (!globalThis.chrome?.runtime?.id || typeof globalThis.chrome.runtime.sendMessage !== 'function') throw disconnected();
       let timer;
-      try { r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : data.action === 'batch-prepare' ? 120000 : 60000); })]); }
+      try { r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : data.action === 'gif-prepare' ? 210000 : data.action === 'batch-prepare' ? 120000 : 60000); })]); }
       finally { clearTimeout(timer); }
       if (!r?.ok) throw Error(r?.error || '扩展未响应，请刷新页面');
     } catch (e) {
@@ -419,7 +419,8 @@
     g.prev.classList.toggle('hidden', g.images.length < 2); g.next.classList.toggle('hidden', g.images.length < 2);
     g.dots.replaceChildren(); g.images.forEach((_, i) => { const d = document.createElement('span'); d.className = `dot${i === g.index ? ' active' : ''}`; g.dots.append(d); }); g.dots.classList.toggle('hidden', g.images.length < 2);
     g.pick.classList.toggle('selected', selected.has(im.url)); g.pick.textContent = selected.has(im.url) ? '✓' : '+'; g.pick.setAttribute('aria-pressed', String(selected.has(im.url))); g.pick.classList.toggle('hidden', isVideo);
-    g.play.classList.toggle('hidden', !isVideo); g.save.classList.toggle('hidden', isVideo); if (!g.copy.disabled) g.copy.textContent = isVideo ? '▶ 播放视频' : '复制 PNG';
+    g.play.classList.toggle('hidden', !isVideo); g.save.classList.toggle('hidden', isVideo || XIFMotion.isGIF(im)); if (!g.copy.disabled) g.copy.textContent = XIFMotion.isGIF(im) ? '复制 GIF' : isVideo ? '▶ 播放视频' : '复制 PNG';
+    g.copy.title = XIFMotion.isGIF(im) ? '复制动图 GIF；原 GIF 保留文件，视频形式本地转为最多 640px、约 12fps 的 GIF' : '';
     g.stitch.classList.toggle('hidden', photosOf(g).length < 2); updateSocial(g); updateCopyState(g);
     if (g.photo.dataset.url !== (im.preview || '')) { g.photo.removeAttribute('src'); g.photo.dataset.url = ''; g.media.classList.add('loading'); g.loader.textContent = '正在读取图片…'; }
     if (g.near && visible(g)) loadCover(g, true);
@@ -464,7 +465,7 @@
     social.append(g.likeButton, g.bookmarkButton, g.stitch);
     const actions = document.createElement('div'); actions.className = 'actions'; const copy = button('复制 PNG', 'copy primary'); const save = button('', 'save', '保存当前图片 PNG'); save.innerHTML = svg('download'); save.setAttribute('aria-label', '保存 PNG');
     g.copy = copy; g.save = save;
-    copy.onclick = () => g.images[g.index].type === 'video' ? openVideo(g) : act(copy, 'copy', [g.images[g.index].url]); save.onclick = () => { if (g.images[g.index].type !== 'video') act(save, 'download', [g.images[g.index].url]); }; actions.append(copy, save);
+    copy.onclick = () => XIFMotion.isGIF(g.images[g.index]) ? copyGIF(g) : g.images[g.index].type === 'video' ? openVideo(g) : act(copy, 'copy', [g.images[g.index].url]); save.onclick = () => { if (g.images[g.index].type !== 'video') act(save, 'download', [g.images[g.index].url]); }; actions.append(copy, save);
     g.batch = button('整组', 'batch-copy', '识别切片后拼接；普通多图复制所有独立 PNG'); g.batch.onclick = () => collect(g); actions.insertBefore(g.batch, save);
     g.copyState = document.createElement('div'); g.copyState.className = 'copy-state';
     card.append(media, meta, social, actions, g.copyState);
@@ -506,12 +507,13 @@
   }
   function updateCopyState(g) {
     const photos = photosOf(g), done = photos.filter(im => copied.has(im.url)).length;
-    g.copyState.textContent = photos.length ? (done ? '已复制 ' + done + '/' + photos.length : '待复制 ' + photos.length + ' 张') : '视频不复制';
+    g.copyState.textContent = photos.length ? (done ? '已复制 ' + done + '/' + photos.length : '待复制 ' + photos.length + ' 张') : g.images.some(XIFMotion.isGIF) ? 'GIF 可直接复制' : '视频不复制';
+    if (XIFMotion.isGIF(g.images[g.index]) && copied.has(g.images[g.index].url)) g.copyState.textContent = 'GIF 已复制，待发送';
     if (collectingGroup === g) g.copyState.textContent = '正在复制…';
     g.copyState.title = '记录本标签页已成功写入剪贴板的图片；不代表已发送到 QQ';
     g.card.classList.toggle('copy-complete', photos.length > 0 && done === photos.length);
     g.batch.classList.toggle('hidden', photos.length < 2); g.batch.disabled = collecting;
-    if (!g.copy.disabled && g.images[g.index].type !== 'video') g.copy.textContent = copied.has(g.images[g.index].url) ? '再复制 PNG' : '复制 PNG';
+    if (!g.copy.disabled && !XIFMotion.isGIF(g.images[g.index]) && g.images[g.index].type !== 'video') g.copy.textContent = copied.has(g.images[g.index].url) ? '再复制 PNG' : '复制 PNG';
   }
   function markCopied(urls) {
     for (const url of urls) copied.add(url);
@@ -547,6 +549,21 @@
       if (job) await message({action: 'batch-abort', jobId: job.jobId}).catch(() => {});
       collecting = false; collectingGroup = null; for (const card of groups.values()) updateCopyState(card);
     }
+  }
+  async function copyGIF(g, b = g.copy, im = g.images[g.index]) {
+    if (collecting) { toast('上一组还在复制，请稍候'); return; }
+    if (!XIFMotion.isGIF(im)) return;
+    const source = im.type === 'video' ? [...(im.variants || [])].sort((a, b) => (b.bitrate || b.width * b.height) - (a.bitrate || a.width * a.height))[0]?.url || im.url : im.url;
+    collecting = true; collectingGroup = g; b.disabled = true; b.textContent = '正在准备 GIF…'; updateCopyState(g); let job;
+    try {
+      if (!document.hasFocus()) throw Error('请切回 X，再复制 GIF');
+      job = await message({action: 'gif-prepare', url: source});
+      if (!document.hasFocus()) throw Error('GIF 已准备，请切回 X 再点复制');
+      const result = await message({action: 'batch-commit', jobId: job.jobId}); job = null;
+      if (result.count !== 1) throw Error('GIF 复制数量未确认');
+      markCopied([im.url]); toast('GIF 动图已复制，可在 QQ 粘贴；发送方式以 QQ 实际界面为准');
+    } catch (e) { toast('GIF 复制未完成：' + e.message); if (/助手|native|host/i.test(e.message)) helperHelp(); }
+    finally { if (job) await message({action: 'batch-abort', jobId: job.jobId}).catch(() => {}); collecting = false; collectingGroup = null; b.disabled = false; b.textContent = '复制 GIF'; updateCard(g); }
   }
   async function act(b, action, urls, mode, blend, seams) {
     if (b.disabled) return; if (action === 'copy' && collecting) { toast('上一组还在复制，请稍候'); return; } if (action === 'copy') collecting = true; const label = b.innerHTML; b.disabled = true; b.textContent = '处理中…';
@@ -739,6 +756,7 @@
     if (g.images[g.index].type === 'video') { closeModal('.viewer'); openVideo(g); return; }
     $('.viewstage img').src = g.images[g.index].url; $('.viewstage img').alt = g.images[g.index].alt;
     $('.thumbs').replaceChildren(); g.images.forEach((im, i) => { const b = button('', i === g.index ? 'active' : '', `查看第 ${i + 1} 张`); const img = new Image(); img.src = im.preview; img.alt = `第 ${i + 1} 张`; b.append(img); b.onclick = () => { g.index = i; updateCard(g); refreshViewer(); }; $('.thumbs').append(b); });
+    $('.viewcopy').textContent = XIFMotion.isGIF(g.images[g.index]) ? '复制 GIF' : '复制 PNG'; $('.viewsave').classList.toggle('hidden', XIFMotion.isGIF(g.images[g.index]));
     $('.viewprev').disabled = $('.viewnext').disabled = g.images.length < 2; $('.viewstitch').classList.toggle('hidden', photosOf(g).length < 2); prefetch(g);
   }
   $('.viewprev').onclick = () => { turn(viewGroup, -1); refreshViewer(); }; $('.viewnext').onclick = () => { turn(viewGroup, 1); refreshViewer(); };
@@ -764,7 +782,7 @@
   zoomImage.onpointermove = e => { if (!drag) return; panX = drag.px + e.clientX - drag.x; panY = drag.py + e.clientY - drag.y; paintZoom(); };
   zoomImage.onpointerup = zoomImage.onpointercancel = zoomImage.onlostpointercapture = () => { drag = null; paintZoom(); };
   zoomImage.title = '滚轮缩放 · 双击放大/还原 · 放大后拖动查看';
-  $('.viewcopy').onclick = () => act($('.viewcopy'), 'copy', [viewGroup.images[viewGroup.index].url]); $('.viewsave').onclick = () => act($('.viewsave'), 'download', [viewGroup.images[viewGroup.index].url]);
+  $('.viewcopy').onclick = () => XIFMotion.isGIF(viewGroup.images[viewGroup.index]) ? copyGIF(viewGroup, $('.viewcopy')) : act($('.viewcopy'), 'copy', [viewGroup.images[viewGroup.index].url]); $('.viewsave').onclick = () => act($('.viewsave'), 'download', [viewGroup.images[viewGroup.index].url]);
   $('.viewstitch').onclick = () => { const g = viewGroup; closeModal('.viewer'); openStitch(photosOf(g), g.suggestion); };
   const player = $('.player');
   function videoStatus(text) { $('.videostatus').textContent = text; $('.videostatus').classList.toggle('hidden', !text); }
@@ -781,6 +799,7 @@
     stopVideo(); const im = g.images[g.index]; if (im.type !== 'video') return;
     const cached = (videoMetadata.get(g.id) || []).find(m => m.key === im.key || (m.poster && im.preview && new URL(m.poster).pathname === new URL(im.preview).pathname));
     const variants = XIFVideo.variants(cached?.variants?.length ? cached.variants : im.variants); videoSession = {variants, source: ''};
+    $('.videogifcopy').classList.toggle('hidden', !im.gif); $('.videogifcopy').onclick = () => copyGIF(g, $('.videogifcopy'), im);
     $('.videotitle').textContent = im.gif ? 'GIF 动图' : '视频预览'; $('.videoorigin').href = g.href;
     if (im.preview) player.poster = im.preview; player.muted = true; player.loop = im.gif === true;
     $('.videoquality').replaceChildren(); variants.forEach((v, i) => { const option = document.createElement('option'); option.value = String(i); option.textContent = `${i === 0 ? '省流 · ' : ''}${v.height ? `${v.height}p` : v.bitrate ? `${Math.round(v.bitrate / 1000)} kbps` : '当前可用清晰度'}`; $('.videoquality').append(option); });

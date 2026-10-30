@@ -101,6 +101,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.target !== 'offscreen' || sender.id !== chrome.runtime.id) return;
   if (msg.action === 'ready') { reply({ok: true, ready: true}); return; }
   const work = async () => {
+    if (msg.action === 'gif') { const r = await XIFGIF.convert(msg.url); return {ok: true, data: await dataURL(r.blob), width: r.width, height: r.height, original: r.original}; }
     if (msg.action === 'revoke') { URL.revokeObjectURL(msg.url); return {ok: true}; }
     if(msg.action==='local-copy') {
       if(typeof msg.data!=='string'||!/^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(msg.data)||msg.data.length>90*1024*1024)throw Error('本地图片格式无效');
@@ -118,7 +119,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     urls.forEach(url => XIF.mediaURL(url));
     if (msg.action === 'prefetch') { await Promise.all(urls.map(url => fetchImage(url, 'orig', true))); return {ok: true}; }
     if (msg.action === 'analyze') return analyze(urls);
-    if (!['copy', 'download', 'preview'].includes(msg.action)) throw Error('未知操作');
+    if (!['gif', 'copy', 'download', 'preview'].includes(msg.action)) throw Error('未知操作');
     const result = await render(urls, msg.mode, msg.action === 'preview', msg.blend !== false, msg.seams);
     if (msg.action === 'preview') return {ok: true, data: await dataURL(result.png), width: result.width, height: result.height, seams: result.seams};
     if (msg.action === 'copy') {
