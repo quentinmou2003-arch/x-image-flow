@@ -3,20 +3,20 @@
   <h1>拾图 · X Image Flow</h1>
   <p>让美图，连成一片。</p>
   <p>一个让 X 图片与视频更好逛、更好收藏的 Chrome 扩展。</p>
-  <p><b>Manifest V3 · Chrome 116+ · v2.3.15 · 简体中文</b></p>
+  <p><b>Manifest V3 · Chrome 116+ · v2.3.16 · 简体中文</b></p>
 </div>
 
 这是我的第一个 GitHub 项目。从自己在 X 上收图的需求出发，我借助 AI 辅助开发，逐步做出了图片瀑布流、卡牌图集、拼接和原尺寸 PNG 复制功能。
 
 ## 特别版试用
 
-新增独立的 **[收藏实验室 2.4.0-lab.5](labs/collector/README.md)**：收图清单、本地原图库、重复提醒、标签搜索、手动发送状态及原图与出处 ZIP 导出。[下载特别版](https://github.com/quentinmou2003-arch/x-image-flow/releases/tag/v2.4.0-lab.5)。它是预发行版，稳定版仍为 2.3.15。
+新增独立的 **[收藏实验室 2.4.0-lab.6](labs/collector/README.md)**：收图清单、本地原图库、重复提醒、标签搜索、手动发送状态及原图与出处 ZIP 导出。[下载特别版](https://github.com/quentinmou2003-arch/x-image-flow/releases/tag/v2.4.0-lab.6)。它是预发行版，稳定版仍为 2.3.16。
 
 试用时暂时关闭稳定版，加载特别版后刷新 X；不必卸载稳定版。收藏数据在特别版自己的本机库中，卸载前请导出。
 
 ## 本次更新
 
-v2.3.15 与特别版 2.4.0-lab.5 新增「复制 GIF」：动图卡片与预览可复制为真正的 GIF 文件，供 QQ 粘贴；原 GIF 保持原文件，视频形式在本地转换。**已有用户请重新运行 native/安装小助手.cmd 更新助手。**升级后在扩展管理页重新加载拾图，并刷新原来打开的 X 页面。请覆盖原安装目录，特别版不要卸载，以保留本地收藏。
+v2.3.16 与特别版 2.4.0-lab.6 修复连接错误误判：图片处理端短暂失联不会再冒充整个插件后台断线，后台唤醒失败会自动短暂重试；持续失败时横幅提供「重试连接」。升级后仍需在扩展管理页重新加载拾图，并刷新原来打开的 X 页面。请覆盖原安装目录，特别版不要卸载，以保留本地收藏。
 
 ## 能做什么
 
@@ -46,7 +46,7 @@ v2.3.15 与特别版 2.4.0-lab.5 新增「复制 GIF」：动图卡片与预览�
 
 目前通过本地加载安装，尚未上架 Chrome 网上应用店。
 
-**[下载最新安装包](https://github.com/quentinmou2003-arch/x-image-flow/releases/latest)**：下载发布页中的 `x-image-flow-v2.3.15.zip` 并解压，加载包含 `manifest.json` 的目录即可。也可以按下面步骤下载完整源码安装。
+**[下载最新安装包](https://github.com/quentinmou2003-arch/x-image-flow/releases/latest)**：下载发布页中的 `x-image-flow-v2.3.16.zip` 并解压，加载包含 `manifest.json` 的目录即可。也可以按下面步骤下载完整源码安装。
 
 1. 点击仓库上方 **Code → Download ZIP**，解压到一个固定目录。
 2. 打开 Chrome 的 `chrome://extensions`，开启右上角的**开发者模式**。

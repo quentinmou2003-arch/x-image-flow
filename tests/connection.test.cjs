@@ -53,18 +53,25 @@ for(const root of roots){
   let result;listener({target:'offscreen',action:'ready'},{id:'test'},r=>result=r);assert.equal(result.ready,true);
   result=null;listener({target:'offscreen',action:'ready'},{id:'other'},r=>result=r);assert.equal(result,null);
  });
- test(root+': missing background and invalidated pages give actionable errors without replaying writes',async()=>{
+ test(root+': background wake-up retries are bounded and processing errors are not mislabeled',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'..',root,'content.js'),'utf8');
   const block=source.slice(source.indexOf('  function disconnected('),source.indexOf('  function toast('));
-  async function run(runtime){let calls=0;const context={chrome:{runtime:{id:'test',sendMessage:()=>{calls++;return runtime();}}},Error,setTimeout,clearTimeout,$:()=>({})};
+  async function run(runtime){let calls=0,removed=0;const reconnect={remove:()=>removed++};const context={chrome:{runtime:{id:'test',sendMessage:()=>{calls++;return runtime(calls);}}},Error,setTimeout,clearTimeout,wait:async()=>{},$:()=>reconnect};
    vm.createContext(context);vm.runInContext(block+';globalThis.send = message;',context);
-   let error;try{await context.send({action:'batch-commit'});}catch(e){error=e;}
-   assert.equal(calls,1);return error;
+   let error,result;try{result=await context.send({action:'batch-commit'});}catch(e){error=e;}
+   return {calls,error,result,removed};
   }
-  assert.match((await run(async()=>{throw missing();})).message,/插件后台未连接.*重新加载/);
-  assert.match((await run(async()=>({ok:false,error:missing().message}))).message,/插件后台未连接/);
-  assert.match((await run(async()=>{throw Error('Extension context invalidated.');})).message,/插件连接已失效/);
-  assert.match((await run(async()=>{throw Error('The message port closed before a response was received.');})).message,/先确认操作结果/);
-  assert.match((await run(async()=>({ok:false,error:'原始图片错误'}))).message,/原始图片错误/);
+  const recovered=await run(async calls=>{if(calls<3)throw missing();return {ok:true,value:'awake'};});
+  assert.equal(recovered.calls,3);assert.equal(recovered.result.value,'awake');assert.equal(recovered.removed,1);
+  const absent=await run(async()=>{throw missing();});
+  assert.equal(absent.calls,3);assert.match(absent.error.message,/插件后台未连接.*重新加载/);
+  const processor=await run(async()=>({ok:false,error:missing().message}));
+  assert.equal(processor.calls,1);assert.match(processor.error.message,/图片处理连接未就绪/);assert.doesNotMatch(processor.error.message,/插件后台未连接/);
+  const invalid=await run(async()=>{throw Error('Extension context invalidated.');});
+  assert.equal(invalid.calls,1);assert.match(invalid.error.message,/插件连接已失效/);
+  const closed=await run(async()=>{throw Error('The message port closed before a response was received.');});
+  assert.equal(closed.calls,1);assert.match(closed.error.message,/先确认操作结果/);
+  const application=await run(async()=>({ok:false,error:'原始图片错误'}));
+  assert.equal(application.calls,1);assert.match(application.error.message,/原始图片错误/);
  });
 }

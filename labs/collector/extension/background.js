@@ -35,6 +35,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       return XIFNativeCopy.abort(sender.tab.id,msg.jobId);
     }
     if (!sender.tab || !/^https:\/\/(x|twitter)\.com\//.test(sender.url || '')) throw Error('不支持的页面');
+    if (msg.action === 'connection-check') return {ok: true};
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
