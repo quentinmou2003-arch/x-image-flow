@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾图 · 收藏实验室",
-  "version": "2.4.0.6",
+  "version": "2.4.0.7",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -16,7 +16,8 @@
     "offscreen",
     "downloads",
     "storage",
-    "nativeMessaging"
+    "nativeMessaging",
+    "alarms"
   ],
   "host_permissions": [
     "https://pbs.twimg.com/*",
@@ -82,5 +83,5 @@
       ]
     }
   ],
-  "version_name": "2.4.0-lab.6"
+  "version_name": "2.4.0-lab.7"
 }

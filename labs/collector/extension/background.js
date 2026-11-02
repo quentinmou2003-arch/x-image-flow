@@ -1,5 +1,10 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'library-store.js');
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'library-store.js', 'archive-queue.js');
+const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,changed:libraryChanged});
+const runArchiveQueue=()=>archiveQueue.pump().catch(error=>console.error('收图队列暂停：',error.message));
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='xif-archive-queue')runArchiveQueue();});
+chrome.alarms.create('xif-archive-queue',{periodInMinutes:1});
+runArchiveQueue();
 chrome.action.onClicked.addListener(async tab => {
   if (/^https:\/\/(x|twitter)\.com\//.test(tab.url || '')) {
     try { await chrome.tabs.sendMessage(tab.id, {type: 'toggle'}); } catch { await chrome.tabs.reload(tab.id); }
@@ -14,6 +19,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       if (!ownLibrary && !xPage) throw Error('收藏库不支持此页面');
       if (msg.action === 'library-open') { await chrome.tabs.create({url: chrome.runtime.getURL('library.html') + (msg.id ? '#' + encodeURIComponent(msg.id) : '')}); return {ok:true}; }
       if (msg.action === 'library-status') return {ok:true,...await XIFLibrary.summary()};
+      if (msg.action === 'library-queue-status') return {ok:true,jobs:(await archiveQueue.list()).filter(j=>j.state!=='saved')};
+      if (msg.action === 'library-enqueue') { const job=await archiveQueue.add(msg.entry); runArchiveQueue(); return {ok:true,id:job.id,state:job.state}; }
+      if (msg.action === 'library-queue-retry') { if(!/^\d{1,30}$/.test(msg.id))throw Error('队列编号无效');await archiveQueue.retry(msg.id);runArchiveQueue();return {ok:true}; }
       if (msg.action === 'library-save') { const entry=await XIFLibrary.save(msg.entry); await libraryChanged(); return {ok:true,id:entry.id}; }
       if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>4)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-edit' && ownLibrary) { await XIFLibrary.edit(msg.id,msg.patch||{}); await libraryChanged();return {ok:true}; }
@@ -66,4 +74,4 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   })().then(reply, error => reply({ok: false, error: error.message})); return true;
 });
 
-async function libraryChanged(){ const tabs=await chrome.tabs.query({url:['https://x.com/*','https://twitter.com/*']});await Promise.allSettled(tabs.map(tab=>chrome.tabs.sendMessage(tab.id,{type:'library-change'})));chrome.runtime.sendMessage({type:'library-change'}).catch(()=>{}); }
+async function libraryChanged(type='library-change'){await chrome.storage.local.set({collectorRevision:{type,nonce:crypto.randomUUID()}});}

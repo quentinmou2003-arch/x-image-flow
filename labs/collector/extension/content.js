@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.6</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.7</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -28,7 +28,7 @@
     <section class="hidemanager hidden" role="dialog" aria-modal="true" aria-label="管理拾图隐藏"><div class="modalhead"><b>已隐藏的推文</b><button class="dismiss">关闭 ×</button></div><p class="hide-note">这里管理拾图的本地隐藏。X 的屏蔽、隐藏账号与推荐偏好请在 X 管理。</p><div class="hidden-list"></div></section>
     <div class="native-shield hidden"></div><div class="menu-fallback hidden" role="menu" aria-label="推文更多选项"></div><div class="toast hidden" role="status" aria-live="polite"></div>`;
   let ordered = true, layoutColumns = 0, autoCopy = true, collecting = false, collectingGroup = null;
-  let libraryFilter = "all", libraryUrls = new Set(), libraryEntries = new Map();
+  let libraryFilter = "all", libraryUrls = new Set(), libraryEntries = new Map(), archiveJobs = new Map(), autoArchive = true;
   const copied = new Set();
   try { for (const url of JSON.parse(sessionStorage.getItem("xif-copied-v1") || "[]").slice(-2000)) if (typeof url === "string") copied.add(url); } catch {}
   const promotedPosts = new Set();
@@ -316,6 +316,11 @@
   const autoToggle = button('点赞自动复制', 'auto-copy', '只在点赞成功后复制；取消点赞不复制'); autoToggle.setAttribute('aria-pressed', 'true'); $('.speed').before(autoToggle);
   function updateAutoCopy() { autoToggle.textContent = autoCopy ? '点赞自动复制' : '仅点赞'; autoToggle.setAttribute('aria-pressed', String(autoCopy)); }
   autoToggle.onclick = () => { autoCopy = !autoCopy; updateAutoCopy(); chrome.storage.local.set({autoCopy}); };
+  const archiveToggle=button('点赞自动收下','auto-archive','点赞成功后后台保存整组原图与出处到本机；云盘尚未连接');archiveToggle.setAttribute('aria-pressed','true');autoToggle.after(archiveToggle);
+  function updateAutoArchive(){archiveToggle.textContent=autoArchive?'点赞自动收下':'手动收下';archiveToggle.setAttribute('aria-pressed',String(autoArchive));}
+  archiveToggle.onclick=async()=>{archiveToggle.disabled=true;try{const next=!autoArchive;await chrome.storage.local.set({autoArchive:next});autoArchive=next;updateAutoArchive();}catch(e){toast('设置未保存：'+e.message);}finally{archiveToggle.disabled=false;}};
+  chrome.storage.local.get({autoArchive:true}).then(p=>{autoArchive=p.autoArchive!==false;updateAutoArchive();}).catch(()=>{});
+  chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.autoArchive){autoArchive=changes.autoArchive.newValue!==false;updateAutoArchive();}});
   const helperButton = button('多图助手', 'helper-settings', '安装和检查 Windows 多图剪贴板助手'); $('.helpbtn').before(helperButton);
   function helperHelp() { $('.helper-guide').classList.remove('hidden'); $('.help').classList.remove('hidden'); }
   helperButton.onclick = helperHelp;
@@ -515,20 +520,24 @@
       g[kind] = result.state; updateSocial(g); if (!['all', 'image', 'video'].includes(filter)) layout(true);
       $('.apihelp')?.classList.add('hidden');
       if (confirmCopy && result.state !== true) failCopy(Error('点赞未确认成功，未自动复制')); else confirmCopy?.();
+      if(kind==='like'&&desired&&result.state===true&&autoArchive&&photosOf(g).length)await enqueueArchive(g).catch(e=>toast('点赞已保留，保存队列未写入：'+e.message+'；请点卡片收下重试'));
       if (!copyTask) toast(`${kind === 'like' ? (desired ? '已喜欢' : '已取消喜欢') : (desired ? '已添加书签' : '已取消书签')} · X 推文状态已更新`);
     } catch (e) { failCopy?.(e); toast(e.message); }
     finally { if (copyTask) await copyTask; g.busy = false; g.likeButton.disabled = g.bookmarkButton.disabled = false; }
   }
   function imageCopied(g,im){return copied.has(im.url)||!!libraryEntries.get(g.id)?.photos.find(p=>p.url===im.url)?.copiedAt;}
   function libraryVisible(g){const photos=photosOf(g);if(libraryFilter==='all')return true;if(!photos.length)return false;const saved=photos.every(im=>libraryUrls.has(im.url)),done=photos.every(im=>copied.has(im.url)||libraryEntries.get(g.id)?.photos.some(p=>p.url===im.url&&p.copiedAt));return libraryFilter==='unsaved'?!saved:libraryFilter==='saved'?saved:libraryFilter==='uncopied'?!done:done;}
-  function updateArchiveState(g){if(!g.archive)return;const photos=photosOf(g),known=photos.filter(im=>libraryUrls.has(im.url)).length,own=libraryEntries.get(g.id);g.archive.classList.toggle('hidden',!photos.length);g.archive.classList.toggle('archived',known===photos.length&&photos.length>0);g.archive.textContent=own&&photos.every(im=>own.photos.some(p=>p.url===im.url))?'已收下 · 查看':known?'收过 '+known+'/'+photos.length+' · 仍收':'收下'+(photos.length>1?'整组':'');}
-  async function refreshLibrary(){try{const saved=await message({action:'library-status'});libraryUrls=new Set(saved.urls);libraryEntries=new Map(saved.entries.map(e=>[e.id,e]));libraryButton.textContent='本地库 '+saved.entries.length;for(const g of groups.values())updateCopyState(g);if(libraryFilter!=='all')refreshVisibility();}catch(e){toast('本地库状态读取失败：'+e.message);}}
-  async function archive(g){if(g.archiving)return;const images=photosOf(g);if(!images.length)return;const own=libraryEntries.get(g.id);if(own&&images.every(im=>own.photos.some(p=>p.url===im.url))){message({action:'library-open',id:g.id}).catch(e=>toast(e.message));return;}g.archiving=true;g.archive.disabled=true;g.archive.textContent='正在收下…';try{await message({action:'library-save',entry:{id:g.id,href:g.href,author:g.author,authorURL:g.authorURL,images:images.map(im=>({url:im.url,alt:im.alt}))}});const done=images.filter(im=>copied.has(im.url)).map(im=>im.url);if(done.length)await message({action:'library-progress',urls:done});await refreshLibrary();toast('原图与出处已收进本地库');}catch(e){toast('收图未完成：'+e.message);}finally{g.archiving=false;g.archive.disabled=false;updateArchiveState(g);}}
+  function updateArchiveState(g){if(!g.archive)return;const photos=photosOf(g),known=photos.filter(im=>libraryUrls.has(im.url)).length,own=libraryEntries.get(g.id),job=archiveJobs.get(g.id);g.archive.classList.toggle('hidden',!photos.length);g.archive.classList.toggle('archived',!!own&&photos.every(im=>own.photos.some(p=>p.url===im.url)));g.archive.textContent=own&&photos.every(im=>own.photos.some(p=>p.url===im.url))?'已收下 · 查看':job?.state==='saving'?'正在收下…':job?.state==='pending'?(job.error?'稍后重试 · 查看':'已排队 · 查看'):job?.state==='failed'?'保存失败 · 重试':known?'收过 '+known+'/'+photos.length+' · 仍收':'收下'+(photos.length>1?'整组':'');}
+  let libraryRefresh=Promise.resolve();
+  function refreshLibrary(){libraryRefresh=libraryRefresh.catch(()=>{}).then(async()=>{const [saved,queue]=await Promise.all([message({action:'library-status'}),message({action:'library-queue-status'})]);libraryUrls=new Set(saved.urls);libraryEntries=new Map(saved.entries.map(e=>[e.id,e]));archiveJobs=new Map(queue.jobs.map(j=>[j.id,j]));const pending=queue.jobs.filter(j=>j.state!=='saved').length;libraryButton.textContent='本地库 '+saved.entries.length+(pending?' · 队列 '+pending:'');for(const g of groups.values())updateCopyState(g);if(libraryFilter!=='all')refreshVisibility();}).catch(e=>toast('本地库状态读取失败：'+e.message));return libraryRefresh;}
+  async function enqueueArchive(g){const images=photosOf(g);if(!images.length)return;await message({action:'library-enqueue',entry:{id:g.id,href:g.href,author:g.author,authorURL:g.authorURL,images:images.map(im=>({url:im.url,alt:im.alt}))}});await refreshLibrary();}
+  async function archive(g){if(g.archiving)return;const images=photosOf(g);if(!images.length)return;const own=libraryEntries.get(g.id),job=archiveJobs.get(g.id);if(own&&images.every(im=>own.photos.some(p=>p.url===im.url))||job&&['saving','pending'].includes(job.state)){message({action:'library-open',id:g.id}).catch(e=>toast(e.message));return;}g.archiving=true;g.archive.disabled=true;try{if(job?.state==='failed')await message({action:'library-queue-retry',id:g.id});else await enqueueArchive(g);await refreshLibrary();toast('已加入收图队列，完成后显示已收下');}catch(e){toast('收图未完成：'+e.message);}finally{g.archiving=false;g.archive.disabled=false;updateArchiveState(g);}}
   const libraryButton=button('本地库','library-button','打开本地收藏原图与收图清单');libraryButton.onclick=()=>message({action:'library-open'}).catch(e=>toast(e.message));$('.helpbtn').before(libraryButton);
   const checklist=document.createElement('div');checklist.className='checklist';
   for(const [value,label]of [['all','全部收图'],['unsaved','未收下'],['saved','收过'],['uncopied','待复制'],['copied','已复制']]){const b=button(label,value==='all'?'active':'');b.dataset.checklist=value;b.onclick=()=>{libraryFilter=value;checklist.querySelectorAll('button').forEach(node=>node.classList.toggle('active',node===b));layout(true);$('.scroll').scrollTop=0;};checklist.append(b);}
   $('.intro').after(checklist);
-  chrome.runtime.onMessage.addListener(msg=>{if(msg.type==='library-change')refreshLibrary();});refreshLibrary();
+  let libraryUpdateTimer;
+  chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.collectorRevision){clearTimeout(libraryUpdateTimer);libraryUpdateTimer=setTimeout(refreshLibrary,150);}});refreshLibrary();
   function updateCopyState(g) {
     const photos = photosOf(g), done = photos.filter(im => imageCopied(g,im)).length;
     g.copyState.textContent = photos.length ? (done ? '已复制 ' + done + '/' + photos.length : '待复制 ' + photos.length + ' 张') : g.images.some(XIFMotion.isGIF) ? 'GIF 可直接复制' : '视频不复制';

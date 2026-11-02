@@ -6,15 +6,22 @@
   const request = req => new Promise((resolve,reject) => { req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error); });
   function database() {
     if (!opened) opened = new Promise((resolve,reject) => {
-      const req = indexedDB.open(DB,1);
-      req.onupgradeneeded=()=>{for(const name of ['entries','assets','aliases'])req.result.createObjectStore(name,{keyPath:name==='entries'?'id':name==='assets'?'hash':'url'});};
-      req.onsuccess=()=>resolve(req.result);req.onerror=()=>{opened=null;reject(req.error);};
+      const req = indexedDB.open(DB,2);
+      req.onupgradeneeded=()=>{for(const name of ['entries','assets','aliases','jobs'])if(!req.result.objectStoreNames.contains(name))req.result.createObjectStore(name,{keyPath:name==='entries'||name==='jobs'?'id':name==='assets'?'hash':'url'});const assets=req.transaction.objectStore('assets');if(!assets.indexNames.contains('bytes'))assets.createIndex('bytes','bytes');req.transaction.objectStore('jobs').createIndex('state','state');};
+      req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();opened=null;};resolve(req.result);};req.onerror=()=>{opened=null;reject(req.error);};
     });
     return opened;
   }
   const enqueue = work => { const task = writes.then(work,work); writes=task.catch(()=>{});return task; };
   async function read(store,key) { const db=await database();return request(db.transaction(store).objectStore(store).get(key)); }
   async function all(store) { const db=await database();return request(db.transaction(store).objectStore(store).getAll()); }
+  async function jobs(states){const db=await database(),index=db.transaction('jobs').objectStore('jobs').index('state');return (await Promise.all(states.map(state=>request(index.getAll(state))))).flat();}
+  async function assetStats(){
+    const db=await database();return new Promise((resolve,reject)=>{
+      let count=0,bytes=0;const cursor=db.transaction('assets').objectStore('assets').index('bytes').openKeyCursor();
+      cursor.onerror=()=>reject(cursor.error);cursor.onsuccess=()=>{const row=cursor.result;if(!row){resolve({count,bytes});return;}count++;bytes+=Number(row.key)||0;row.continue();};
+    });
+  }
   async function write(stores,work) {
     const db=await database();return new Promise((resolve,reject)=>{
       const tx=db.transaction(stores,'readwrite');tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||Error('本地写入已取消'));
@@ -86,6 +93,7 @@
     const entries=await all('entries');
     return {entries:entries.map(e=>({id:e.id,photos:e.photos.map(p=>({url:p.url,copiedAt:p.copiedAt})),state:e.state})),urls:[...new Set(entries.flatMap(e=>e.photos.map(p=>p.url)))]};
   }
-  scope.XIFLibrary={database,read,all,save,edit,progress,remove,summary,tags,input};
+  async function putJob(job) { return enqueue(()=>write(['jobs'],tx=>tx.objectStore('jobs').put(job))); }
+  scope.XIFLibrary={database,read,all,save,edit,progress,remove,summary,tags,input,putJob,assetStats,jobs};
   if(typeof module!=='undefined')module.exports={tags,input};
 })(globalThis);

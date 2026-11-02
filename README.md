@@ -10,7 +10,7 @@
 
 ## 特别版试用
 
-新增独立的 **[收藏实验室 2.4.0-lab.6](labs/collector/README.md)**：收图清单、本地原图库、重复提醒、标签搜索、手动发送状态及原图与出处 ZIP 导出。[下载特别版](https://github.com/quentinmou2003-arch/x-image-flow/releases/tag/v2.4.0-lab.6)。它是预发行版，稳定版仍为 2.3.16。
+新增独立的 **[收藏实验室 2.4.0-lab.7](labs/collector/README.md)**：点赞自动保存整组原图、可恢复的本地收图队列、失败重试、按视口读取图片与轻量容量统计；保留标签搜索、去重与 ZIP 导出。[下载特别版](https://github.com/quentinmou2003-arch/x-image-flow/releases/tag/v2.4.0-lab.7)。Google Drive 接入仍在规划，当前文件保存在本机。稳定版仍为 2.3.16。
 
 试用时暂时关闭稳定版，加载特别版后刷新 X；不必卸载稳定版。收藏数据在特别版自己的本机库中，卸载前请导出。
 
