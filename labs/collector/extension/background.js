@@ -1,10 +1,13 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'library-store.js', 'archive-queue.js');
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js');
+const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,changed:type=>libraryChanged(type)});
+const runDriveSync=()=>driveSync.pump().catch(error=>console.error('云同步暂停：',error.message));
 const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,changed:libraryChanged});
 const runArchiveQueue=()=>archiveQueue.pump().catch(error=>console.error('收图队列暂停：',error.message));
-chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='xif-archive-queue')runArchiveQueue();});
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='xif-archive-queue'){runArchiveQueue();runDriveSync();}});
 chrome.alarms.create('xif-archive-queue',{periodInMinutes:1});
 runArchiveQueue();
+runDriveSync();
 chrome.action.onClicked.addListener(async tab => {
   if (/^https:\/\/(x|twitter)\.com\//.test(tab.url || '')) {
     try { await chrome.tabs.sendMessage(tab.id, {type: 'toggle'}); } catch { await chrome.tabs.reload(tab.id); }
@@ -15,6 +18,14 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   (async () => {
     const ownLibrary = sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL('library.html'));
     const xPage = sender.id === chrome.runtime.id && sender.tab && /^https:\/\/(x|twitter)\.com\//.test(sender.url || '');
+    if(msg.action?.startsWith('drive-')){
+      if(!ownLibrary)throw Error('请在本地库连接和管理云盘');
+      if(msg.action==='drive-status')return {ok:true,...await driveSync.status()};
+      if(msg.action==='drive-connect'){const result=await driveSync.connect();runDriveSync();return {ok:true,...result};}
+      if(msg.action==='drive-disconnect')return driveSync.disconnect();
+      if(msg.action==='drive-retry'){if(typeof msg.id!=='string'||msg.id.length>400)throw Error('任务编号无效');await driveSync.retry(msg.id);runDriveSync();return {ok:true};}
+      throw Error('云盘操作无效');
+    }
     if (msg.action?.startsWith('library-')) {
       if (!ownLibrary && !xPage) throw Error('收藏库不支持此页面');
       if (msg.action === 'library-open') { await chrome.tabs.create({url: chrome.runtime.getURL('library.html') + (msg.id ? '#' + encodeURIComponent(msg.id) : '')}); return {ok:true}; }
@@ -22,9 +33,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       if (msg.action === 'library-queue-status') return {ok:true,jobs:(await archiveQueue.list()).filter(j=>j.state!=='saved')};
       if (msg.action === 'library-enqueue') { const job=await archiveQueue.add(msg.entry); runArchiveQueue(); return {ok:true,id:job.id,state:job.state}; }
       if (msg.action === 'library-queue-retry') { if(!/^\d{1,30}$/.test(msg.id))throw Error('队列编号无效');await archiveQueue.retry(msg.id);runArchiveQueue();return {ok:true}; }
-      if (msg.action === 'library-save') { const entry=await XIFLibrary.save(msg.entry); await libraryChanged(); return {ok:true,id:entry.id}; }
-      if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>4)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
-      if (msg.action === 'library-edit' && ownLibrary) { await XIFLibrary.edit(msg.id,msg.patch||{}); await libraryChanged();return {ok:true}; }
+      if (msg.action === 'library-save') { const entry=await XIFLibrary.save(msg.entry); await libraryChanged('library-change',entry.id); return {ok:true,id:entry.id}; }
+      if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>20)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
+      if (msg.action === 'library-edit' && ownLibrary) { await XIFLibrary.edit(msg.id,msg.patch||{}); await libraryChanged('library-change',msg.id);return {ok:true}; }
       if (msg.action === 'library-delete' && ownLibrary) { await XIFLibrary.remove(msg.id); await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-local-prepare' && ownLibrary) {
         const entry=await XIFLibrary.read('entries',msg.id);if(!entry)throw Error('收藏不存在');
@@ -45,6 +56,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (!sender.tab || !/^https:\/\/(x|twitter)\.com\//.test(sender.url || '')) throw Error('不支持的页面');
     if (msg.action === 'connection-check') return {ok: true};
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
+    if(msg.action==='bulk-prepare'){
+      if(!Array.isArray(msg.urls)||msg.urls.length<1||msg.urls.length>20)throw Error('每批支持 1–20 张照片');
+      const urls=msg.urls.map(url=>XIF.mediaURL(url));if(new Set(urls).size!==urls.length)throw Error('所选图片存在重复');
+      return XIFNativeCopy.prepare(sender.tab.id,urls);
+    }
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
     if (msg.action === 'gif-prepare') return XIFNativeCopy.prepareGIF(sender.tab.id, XIFMotion.url(msg.url));
@@ -74,4 +90,4 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   })().then(reply, error => reply({ok: false, error: error.message})); return true;
 });
 
-async function libraryChanged(type='library-change'){await chrome.storage.local.set({collectorRevision:{type,nonce:crypto.randomUUID()}});}
+async function libraryChanged(type='library-change',id){await chrome.storage.local.set({collectorRevision:{type,nonce:crypto.randomUUID()}});if(id){await driveSync.enqueue(id);runDriveSync();}}

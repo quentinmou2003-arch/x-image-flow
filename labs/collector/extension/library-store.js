@@ -6,8 +6,13 @@
   const request = req => new Promise((resolve,reject) => { req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error); });
   function database() {
     if (!opened) opened = new Promise((resolve,reject) => {
-      const req = indexedDB.open(DB,2);
-      req.onupgradeneeded=()=>{for(const name of ['entries','assets','aliases','jobs'])if(!req.result.objectStoreNames.contains(name))req.result.createObjectStore(name,{keyPath:name==='entries'||name==='jobs'?'id':name==='assets'?'hash':'url'});const assets=req.transaction.objectStore('assets');if(!assets.indexNames.contains('bytes'))assets.createIndex('bytes','bytes');req.transaction.objectStore('jobs').createIndex('state','state');};
+      const req = indexedDB.open(DB,3);
+      req.onupgradeneeded=()=>{
+        for(const name of ['entries','assets','aliases','jobs','driveJobs','driveRecords'])if(!req.result.objectStoreNames.contains(name))req.result.createObjectStore(name,{keyPath:name==='assets'?'hash':name==='aliases'?'url':'id'});
+        const assets=req.transaction.objectStore('assets');if(!assets.indexNames.contains('bytes'))assets.createIndex('bytes','bytes');
+        const jobs=req.transaction.objectStore('jobs');if(!jobs.indexNames.contains('state'))jobs.createIndex('state','state');
+        req.transaction.objectStore('driveJobs').createIndex('accountState',['account','state']);
+      };
       req.onsuccess=()=>{req.result.onversionchange=()=>{req.result.close();opened=null;};resolve(req.result);};req.onerror=()=>{opened=null;reject(req.error);};
     });
     return opened;
@@ -94,6 +99,8 @@
     return {entries:entries.map(e=>({id:e.id,photos:e.photos.map(p=>({url:p.url,copiedAt:p.copiedAt})),state:e.state})),urls:[...new Set(entries.flatMap(e=>e.photos.map(p=>p.url)))]};
   }
   async function putJob(job) { return enqueue(()=>write(['jobs'],tx=>tx.objectStore('jobs').put(job))); }
-  scope.XIFLibrary={database,read,all,save,edit,progress,remove,summary,tags,input,putJob,assetStats,jobs};
+  async function putDrive(store,value){if(!['driveJobs','driveRecords'].includes(store))throw Error('云盘记录无效');return enqueue(()=>write([store],tx=>tx.objectStore(store).put(value)));}
+  async function driveJobs(account,states){const db=await database(),index=db.transaction('driveJobs').objectStore('driveJobs').index('accountState');return (await Promise.all(states.map(state=>request(index.getAll([account,state]))))).flat();}
+  scope.XIFLibrary={database,read,all,save,edit,progress,remove,summary,tags,input,putJob,assetStats,jobs,putDrive,driveJobs};
   if(typeof module!=='undefined')module.exports={tags,input};
 })(globalThis);

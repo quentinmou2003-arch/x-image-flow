@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.7</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.8</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -162,7 +162,7 @@
     for (let attempt = 0; attempt < 3; attempt++) {
       let timer;
       try {
-        r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : ['batch-prepare','library-save'].includes(data.action) ? 120000 : 60000); })]);
+        r = await Promise.race([chrome.runtime.sendMessage({target: 'worker', ...data}), new Promise((_, reject) => { timer = setTimeout(() => reject(Error(data.action === 'tweet-action' ? 'X 响应超时，请打开原推文确认点赞或书签状态后重试' : '图片处理超时，请稍后重试；拼接可先关闭自动匹配')), data.action === 'tweet-action' ? 25000 : data.action === 'bulk-prepare' ? 600000 : data.action === 'gif-prepare' ? 210000 : ['batch-prepare','library-save'].includes(data.action) ? 120000 : 60000); })]);
         transportError = null; break;
       } catch (error) {
         if (!globalThis.chrome?.runtime?.id || /Extension context invalidated|context.*invalidated/i.test(error.message)) throw disconnected();
@@ -182,6 +182,8 @@
     return r;
   };
   function toast(text) { $('.toast').textContent = text; $('.toast').classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('.toast').classList.add('hidden'), 5500); }
+  const bulkPicker=new XIFBulkPicker({root,groups:()=>[...groups.values()].filter(visible),message,toast,copied:markCopied,busy:()=>collecting,setBusy:value=>{collecting=value;},helper:helperHelp});
+  chrome.runtime.onMessage.addListener((msg,sender)=>{if(sender.id===chrome.runtime.id&&msg.type==='bulk-copy-progress')bulkPicker.progress(msg);});
   function button(label, className, title) { const b = document.createElement('button'); b.className = className; b.textContent = label; if (title) b.title = title; return b; }
   function postOf(article) { return XIF.status(article.querySelector('a[href*="/status/"] time')?.closest('a')?.href || article.querySelector('a[href*="/status/"]')?.href); }
   function authorURL(article, post, mainPost) {
@@ -430,6 +432,7 @@
     else { g.photo.removeAttribute('src'); g.media.classList.remove('loading'); g.media.classList.add('load-error'); g.loader.textContent = im.type === 'video' ? '视频封面未载入' : '图片地址不可用'; }
   }
   function updateCard(g) {
+    bulkPicker.update(g);
     updateLongImage(g);
     const im = g.images[g.index], isVideo = im.type === 'video'; g.card.classList.toggle('multi', g.images.length > 1); g.card.classList.toggle('video-card', isVideo);
     g.photo.alt = im.alt; g.photo.width = im.width; g.photo.height = im.height;

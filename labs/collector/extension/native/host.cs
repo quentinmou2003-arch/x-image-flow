@@ -14,6 +14,7 @@ class XIFClipboardHost {
     static string folder;
     static int expected;
     static long pixels;
+    static long batchBytes;
     static readonly SortedDictionary<int, string> files = new SortedDictionary<int, string>();
     static bool committed;
     static byte[] ReadExact(Stream input, int count) {
@@ -32,7 +33,7 @@ class XIFClipboardHost {
     }
     static void Reset() {
         if (!committed && Owned(folder) && Directory.Exists(folder)) { try { Directory.Delete(folder, true); } catch {} }
-        folder = null; files.Clear(); expected = 0; pixels = 0; committed = false;
+        folder = null; files.Clear(); expected = 0; pixels = 0; batchBytes = 0; committed = false;
     }
     static void CleanOld() {
         Directory.CreateDirectory(Root);
@@ -45,9 +46,9 @@ class XIFClipboardHost {
     static int BigInt(byte[] data, int offset) { return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]; }
     static object Handle(Dictionary<string, object> message) {
         string request = Text(message, "requestId"), operation = Text(message, "op");
-        if (operation == "ping") return new { ok = true, requestId = request, version = "1.1.0", gifClipboard = true };
+        if (operation == "ping") return new { ok = true, requestId = request, version = "1.2.0", gifClipboard = true, maxBatchCount = 20 };
         if (operation == "begin") {
-            Reset(); expected = Number(message, "count"); if (expected < 1 || expected > 4) throw new Exception("图片数量应为 1–4 张");
+            Reset(); expected = Number(message, "count"); if (expected < 1 || expected > 20) throw new Exception("每批图片数量应为 1–20 张");
             CleanOld(); folder = Path.Combine(Root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
             return new { ok = true, requestId = request };
         }
@@ -59,6 +60,7 @@ class XIFClipboardHost {
                 if (data.Length > 57 * 1024 * 1024) throw new Exception("GIF 数据过大");
                 byte[] gif = Convert.FromBase64String(data.Substring("data:image/gif;base64,".Length));
                 if (gif.Length < 14 || gif.Length > 40 * 1024 * 1024 || (Encoding.ASCII.GetString(gif, 0, 6) != "GIF89a" && Encoding.ASCII.GetString(gif, 0, 6) != "GIF87a")) throw new Exception("GIF 文件头无效");
+                if (batchBytes + gif.Length > 200L * 1024 * 1024) throw new Exception("本批文件超过 200 MB，请减少图片数量");
                 int w = gif[6] | (gif[7] << 8), h = gif[8] | (gif[9] << 8);
                 if (w < 1 || h < 1 || w > 32767 || h > 32767 || (long)w * h > 100000000) throw new Exception("GIF 尺寸过大");
                 using (var input = new MemoryStream(gif))
@@ -70,18 +72,21 @@ class XIFClipboardHost {
                 }
                 string gifFile = Path.Combine(folder, (index + 1).ToString("D2") + ".gif");
                 File.WriteAllBytes(gifFile, gif); files.Add(index, gifFile);
+                batchBytes += gif.Length;
                 return new { ok = true, requestId = request };
             }
             if (!data.StartsWith(prefix, StringComparison.Ordinal) || data.Length > 57 * 1024 * 1024) throw new Exception("PNG 数据无效或过大");
             byte[] bytes = Convert.FromBase64String(data.Substring(prefix.Length));
             byte[] signature = {137, 80, 78, 71, 13, 10, 26, 10};
             if (bytes.Length < 33 || bytes.Length > 40 * 1024 * 1024) throw new Exception("PNG 大小无效");
+            if (batchBytes + bytes.Length > 200L * 1024 * 1024) throw new Exception("本批文件超过 200 MB，请减少图片数量");
             for (int i = 0; i < signature.Length; i++) if (bytes[i] != signature[i]) throw new Exception("只接受 PNG 图片");
             if (Encoding.ASCII.GetString(bytes, 12, 4) != "IHDR") throw new Exception("PNG 文件头无效");
             int width = BigInt(bytes, 16), height = BigInt(bytes, 20);
             if (width < 1 || height < 1 || width > 32767 || height > 32767 || pixels + (long)width * height > 100000000) throw new Exception("整组图片尺寸过大");
             string file = Path.Combine(folder, (index + 1).ToString("D2") + ".png");
             File.WriteAllBytes(file, bytes); files.Add(index, file); pixels += (long)width * height;
+            batchBytes += bytes.Length;
             return new { ok = true, requestId = request };
         }
         if (operation == "abort") { Reset(); return new { ok = true, requestId = request }; }

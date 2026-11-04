@@ -11,6 +11,11 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (!sender.tab || !/^https:\/\/(x|twitter)\.com\//.test(sender.url || '')) throw Error('不支持的页面');
     if (msg.action === 'connection-check') return {ok: true};
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
+    if(msg.action==='bulk-prepare'){
+      if(!Array.isArray(msg.urls)||msg.urls.length<1||msg.urls.length>20)throw Error('每批支持 1–20 张照片');
+      const urls=msg.urls.map(url=>XIF.mediaURL(url));if(new Set(urls).size!==urls.length)throw Error('所选图片存在重复');
+      return XIFNativeCopy.prepare(sender.tab.id,urls);
+    }
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
     if (msg.action === 'gif-prepare') return XIFNativeCopy.prepareGIF(sender.tab.id, XIFMotion.url(msg.url));

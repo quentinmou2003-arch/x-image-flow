@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const $=s=>document.querySelector(s), objectURLs=new Set();
-  let entries=[],pageSize=50,busy=false,selected=null,timer,refreshTimer,queueSize=20,queueTimer;
+  let entries=[],pageSize=50,busy=false,selected=null,timer,refreshTimer,queueSize=20,queueTimer,driveTimer,driveSize=10,driveState=null;
   async function message(data){try{const result=await chrome.runtime.sendMessage({target:'worker',...data});if(!result?.ok)throw Error(result?.error||'扩展未响应');return result;}catch(e){if(/Receiving end does not exist|Could not establish connection|Extension context invalidated/i.test(e.message))throw Error('插件后台未连接，请重新加载拾图，再重新打开本地库');throw e;}}
   function notice(text){clearTimeout(timer);$('#notice').textContent=text;$('#notice').hidden=false;timer=setTimeout(()=>$('#notice').hidden=true,5000);}
   function button(text,cls,action){const b=document.createElement('button');b.textContent=text;b.className=cls||'';b.onclick=async()=>{b.disabled=true;try{await action();}catch(e){notice(e.message);}finally{b.disabled=false;}};return b;}
@@ -26,7 +26,25 @@
   }
   async function download(blob,filename){const url=URL.createObjectURL(blob);try{await chrome.downloads.download({url,filename,saveAs:false});}finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}}
   async function exportPhotos(entry,photos=entry.photos){for(const photo of photos){const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图缺失');await download(asset.blob,'XIF-Library/'+entry.id+'-'+(entry.photos.indexOf(photo)+1)+'.'+extension(asset.mime));}notice('原图导出已开始');}
-  async function refresh(){entries=(await XIFLibrary.all('entries')).sort((a,b)=>b.createdAt-a.createdAt);const stats=await XIFLibrary.assetStats();$('#post-count').textContent=entries.length;$('#image-count').textContent=stats.count;$('#bytes').textContent=(stats.bytes/1024/1024).toFixed(1)+' MB';await render();await renderQueue();}
+  async function refresh(){entries=(await XIFLibrary.all('entries')).sort((a,b)=>b.createdAt-a.createdAt);const stats=await XIFLibrary.assetStats();$('#post-count').textContent=entries.length;$('#image-count').textContent=stats.count;$('#bytes').textContent=(stats.bytes/1024/1024).toFixed(1)+' MB';await render();await renderQueue();await renderDrive();}
+  const cloudLabel=job=>job?.state==='synced'?'已入云':job?.state==='uploading'?'上传中 '+job.done+'/'+job.total:job?.state==='failed'?'云端同步失败':'待上传';
+  function cloudPills(state){if(!state)return;const latest=new Map();for(const job of [...state.jobs].sort((a,b)=>b.createdAt-a.createdAt))if(!latest.has(job.entryId))latest.set(job.entryId,job);for(const card of document.querySelectorAll('.card[data-id]')){let pill=card.querySelector('.cloud-pill');if(!pill){pill=document.createElement('span');pill.className='cloud-pill';card.querySelector('.state-line').after(pill);}const job=latest.get(card.dataset.id);pill.textContent=job?cloudLabel(job):state.enabled?'待同步':'云盘未连接';pill.classList.toggle('synced',job?.state==='synced');}}
+  async function renderDrive(){
+    const state=await message({action:'drive-status'});driveState=state;
+    $('#drive-status').textContent=state.enabled?(state.paused?'同步暂停 · ':'已连接 · ')+(state.account?.email||state.account?.name||'Google Drive'):'未连接';
+    $('#drive-connect').textContent=state.enabled?'重新授权并同步':'连接并同步收藏';$('#drive-disconnect').hidden=!state.enabled;
+    $('#drive-error').textContent=state.error;$('#drive-folder').hidden=!state.folder;if(state.folder)$('#drive-folder').href=state.folder;
+    if(!state.configured){$('#drive-setup').open=true;$('#drive-error').textContent='首次需配置 Google 应用客户端 ID，当前原图仍在本机。';}
+    $('.cloud-status').textContent=state.enabled?'本机保存与云端同步分开显示':'云盘未连接 · 本机保存继续工作';
+    const jobs=state.jobs.sort((a,b)=>b.createdAt-a.createdAt);cloudPills(state);
+    const list=$('#drive-jobs');list.replaceChildren();const visible=jobs.filter(j=>j.state!=='synced');$('#drive-more').hidden=visible.length<=driveSize;
+    for(const job of visible.slice(0,driveSize)){const row=document.createElement('div');row.className='queue-row';const label=document.createElement('div');label.textContent='推文 '+job.entryId+' · '+cloudLabel(job);if(job.error){const p=document.createElement('p');p.textContent=job.error;label.append(p);}row.append(label);if(job.state!=='uploading')row.append(button('重试','',async()=>{await message({action:'drive-retry',id:job.id});await renderDrive();}));list.append(row);}
+  }
+  $('#drive-extension-id').value=chrome.runtime.id;
+  $('#drive-copy-id').onclick=()=>navigator.clipboard.writeText(chrome.runtime.id).then(()=>notice('扩展 ID 已复制'),e=>notice(e.message));
+  $('#drive-connect').onclick=async()=>{const b=$('#drive-connect');b.disabled=true;$('#drive-status').textContent='正在请求 Google 授权…';try{await message({action:'drive-connect'});notice('已连接，原图将在后台上传');}catch(e){notice(e.message);}finally{b.disabled=false;await renderDrive().catch(e=>notice(e.message));}};
+  $('#drive-disconnect').onclick=async()=>{await message({action:'drive-disconnect'});await renderDrive();};
+  $('#drive-more').onclick=()=>{driveSize+=10;renderDrive().catch(e=>notice(e.message));};
   async function renderQueue(){
     const {jobs}=await message({action:'library-queue-status'}),pending=jobs.filter(j=>j.state!=='saved');
     $('#queue-count').textContent=pending.length;$('#queue-summary').textContent=pending.length?pending.length+' 组正在保存或等待处理。网络恢复后自动重试，连续失败 5 次可手动重试。':'队列已处理完毕。新增点赞会保存整组原图，已有的历史点赞不会自动导入。';
@@ -65,13 +83,14 @@
       const actions=document.createElement('div');actions.className='actions';actions.append(button(entry.photos.length>1?'复制整组':'复制 PNG','primary',()=>copy(entry)),button('导出原图','',()=>exportPhotos(entry)),button(entry.state==='sent'?'重新处理':'我已发送','confirm-sent',async()=>{await message({action:'library-edit',id:entry.id,patch:{state:entry.state==='sent'?'saved':'sent'}});await refresh();}),button('移除','remove',async()=>{if(!confirm('移除这条本地收藏？不影响 X 的点赞或书签，共用原图会保留。'))return;await message({action:'library-delete',id:entry.id});await refresh();}));
       meta.append(top,date,stateLine,tags,actions);card.append(covers,meta);$('#grid').append(card);
     }
+    cloudPills(driveState);
   }
   $('#home').onclick=$('#empty-home').onclick=()=>chrome.tabs.create({url:'https://x.com/home'});
   $('#search').oninput=()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{pageSize=50;render();},120);};
   $('#state').onchange=()=>{pageSize=50;render();};$('#more').onclick=()=>{pageSize+=50;render();};
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
     const assets=await XIFLibrary.all('assets'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)]));
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.7',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.8',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
     const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+a.hash+'.'+extension(a.mime),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};
@@ -80,7 +99,7 @@
   $('#preview img').ondblclick=()=>$('#preview img').classList.toggle('zoomed');$('#preview img').title='双击查看原尺寸，再双击适应窗口';
   $('#copy-preview').onclick=()=>copy(selected.entry,[selected.photo]).catch(e=>notice(e.message));
   $('#download-preview').onclick=()=>exportPhotos(selected.entry,[selected.photo]).catch(e=>notice(e.message));
-  chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local'||!changes.collectorRevision)return;const type=changes.collectorRevision.newValue?.type;if(type==='queue-change'){clearTimeout(queueTimer);queueTimer=setTimeout(()=>renderQueue().catch(e=>notice(e.message)),150);}if(type==='library-change'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>refresh().catch(e=>notice(e.message)),150);}});
+  chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local'||!changes.collectorRevision)return;const type=changes.collectorRevision.newValue?.type;if(type==='drive-change'){clearTimeout(driveTimer);driveTimer=setTimeout(()=>renderDrive().catch(e=>notice(e.message)),150);}if(type==='queue-change'){clearTimeout(queueTimer);queueTimer=setTimeout(()=>renderQueue().catch(e=>notice(e.message)),150);}if(type==='library-change'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>refresh().catch(e=>notice(e.message)),150);}});
   addEventListener('pagehide',()=>{for(const url of objectURLs)URL.revokeObjectURL(url);if(selected?.url)URL.revokeObjectURL(selected.url);});
   refresh().catch(e=>notice('收藏库读取失败：'+e.message));
 })();

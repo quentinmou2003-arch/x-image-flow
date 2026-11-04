@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾图 · 收藏实验室",
-  "version": "2.4.0.7",
+  "version": "2.4.0.8",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -17,11 +17,13 @@
     "downloads",
     "storage",
     "nativeMessaging",
-    "alarms"
+    "alarms",
+    "identity"
   ],
   "host_permissions": [
     "https://pbs.twimg.com/*",
-    "https://video.twimg.com/*"
+    "https://video.twimg.com/*",
+    "https://www.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -67,6 +69,7 @@
         "navigation.js",
         "auto-loader.js",
         "motion.js",
+        "bulk-picker.js",
         "content.js"
       ],
       "run_at": "document_idle"
@@ -83,5 +86,5 @@
       ]
     }
   ],
-  "version_name": "2.4.0-lab.7"
+  "version_name": "2.4.0-lab.8"
 }

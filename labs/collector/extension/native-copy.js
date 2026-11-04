@@ -34,10 +34,11 @@
     async prepare(tabId, urls, mode, blend, provider, requireGIF = false) {
       if (job) throw Error('上一组还在复制，请稍后重试');
       const current = {id: crypto.randomUUID(), tabId, connection: connect(), ready: false};
-      job = current; current.timer = setTimeout(() => discard(current), 240000);
+      job = current; current.timer = setTimeout(() => discard(current), urls.length > 4 ? 600000 : 240000);
       try {
         const count = mode ? 1 : urls.length;
         const capability = await current.connection.call('ping');
+        if(count>(capability.maxBatchCount||4))throw Error('批量复制需要更新小助手，请运行新版 native/安装小助手.cmd');
         if (requireGIF && capability.gifClipboard !== true) throw Error('请运行新版安装包 native 文件夹中的安装小助手.cmd，更新 GIF 复制支持');
         await current.connection.call('begin', {count});
         for (let i = 0; i < count; i++) {
@@ -46,6 +47,7 @@
           if (!png?.ok) throw Error(png?.error || 'PNG 准备失败');
           if (job !== current) throw Error('整组复制已取消');
           await current.connection.call('image', {index: i, data: png.data});
+          if(urls.length>4)chrome.tabs.sendMessage(tabId,{type:'bulk-copy-progress',done:i+1,total:count}).catch(()=>{});
         }
         current.ready = true;
         return {ok: true, jobId: current.id, count};

@@ -10,7 +10,7 @@
     }
     serial(work){const task=this.lock.then(work,work);this.lock=task.catch(()=>{});return task;}
     async jobs(states){return this.store.jobs?this.store.jobs(states):(await this.store.all('jobs')).filter(j=>states.includes(j.state));}
-    async notify(type='queue-change'){try{await this.changed(type);}catch{/* Committed jobs survive a closed page. */}}
+    async notify(type='queue-change',id){try{await this.changed(type,id);}catch{/* Committed jobs survive a closed page. */}}
     async add(value){
       const source=this.store.input(value);
       const job=await this.serial(async()=>{
@@ -52,7 +52,7 @@
           if(current.state!=='saving'||JSON.stringify(current.source.images)!==JSON.stringify(job.source.images))return;
           await this.store.putJob({...job,state:error?(job.attempts>=5?'failed':'pending'):'saved',error,nextAt:error?this.now()+Math.min(900000,60000*2**(job.attempts-1)):0,updatedAt:this.now()});
         });
-        await this.notify(error?'queue-change':'library-change');
+        await this.notify(error?'queue-change':'library-change',error?undefined:job.id);
       }
     }
   }
