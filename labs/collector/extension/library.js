@@ -47,6 +47,7 @@
   $('#drive-more').onclick=()=>{driveSize+=10;renderDrive().catch(e=>notice(e.message));};
   async function renderQueue(){
     const {jobs}=await message({action:'library-queue-status'}),pending=jobs.filter(j=>j.state!=='saved');
+    if(pending.length&&!$('#archive-panel').dataset.shown){$('#archive-panel').open=true;$('#archive-panel').dataset.shown='true';}
     $('#queue-count').textContent=pending.length;$('#queue-summary').textContent=pending.length?pending.length+' 组正在保存或等待处理。网络恢复后自动重试，连续失败 5 次可手动重试。':'队列已处理完毕。新增点赞会保存整组原图，已有的历史点赞不会自动导入。';
     const list=$('#queue-list');list.replaceChildren();$('#queue-more').hidden=pending.length<=queueSize;
     for(const job of pending.slice(0,queueSize)){
@@ -90,7 +91,7 @@
   $('#state').onchange=()=>{pageSize=50;render();};$('#more').onclick=()=>{pageSize+=50;render();};
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
     const assets=await XIFLibrary.all('assets'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)]));
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.10',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.11',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
     const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+a.hash+'.'+extension(a.mime),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};
@@ -101,5 +102,6 @@
   $('#download-preview').onclick=()=>exportPhotos(selected.entry,[selected.photo]).catch(e=>notice(e.message));
   chrome.storage.onChanged.addListener((changes,area)=>{if(area!=='local'||!changes.collectorRevision)return;const type=changes.collectorRevision.newValue?.type;if(type==='drive-change'){clearTimeout(driveTimer);driveTimer=setTimeout(()=>renderDrive().catch(e=>notice(e.message)),150);}if(type==='queue-change'){clearTimeout(queueTimer);queueTimer=setTimeout(()=>renderQueue().catch(e=>notice(e.message)),150);}if(type==='library-change'){clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>refresh().catch(e=>notice(e.message)),150);}});
   addEventListener('pagehide',()=>{for(const url of objectURLs)URL.revokeObjectURL(url);if(selected?.url)URL.revokeObjectURL(selected.url);});
+  if(location.hash==='#drive-setup'){$('#drive-panel').open=true;$('#drive-setup').open=true;}
   refresh().catch(e=>notice('收藏库读取失败：'+e.message));
 })();

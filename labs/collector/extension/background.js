@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     }
     if (msg.action?.startsWith('library-')) {
       if (!ownLibrary && !xPage) throw Error('收藏库不支持此页面');
-      if (msg.action === 'library-open') { await chrome.tabs.create({url: chrome.runtime.getURL('library.html') + (msg.id ? '#' + encodeURIComponent(msg.id) : '')}); return {ok:true}; }
+      if (msg.action === 'library-open') { await chrome.tabs.create({url: chrome.runtime.getURL('library.html') + (msg.view==='drive'?'#drive-setup':msg.id ? '#' + encodeURIComponent(msg.id) : '')}); return {ok:true}; }
       if (msg.action === 'library-status') return {ok:true,...await XIFLibrary.summary()};
       if (msg.action === 'library-queue-status') return {ok:true,jobs:(await archiveQueue.list()).filter(j=>j.state!=='saved')};
       if (msg.action === 'library-enqueue') { const job=await archiveQueue.add(msg.entry); runArchiveQueue(); return {ok:true,id:job.id,state:job.state}; }

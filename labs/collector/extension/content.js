@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.10</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.11</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -339,13 +339,13 @@
   const autoToggle = button('点赞自动复制', 'auto-copy', '只在点赞成功后复制；取消点赞不复制'); autoToggle.setAttribute('aria-pressed', 'true'); $('.speed').before(autoToggle);
   function updateAutoCopy() { autoToggle.textContent = autoCopy ? '点赞自动复制' : '仅点赞'; autoToggle.setAttribute('aria-pressed', String(autoCopy)); }
   autoToggle.onclick = () => { autoCopy = !autoCopy; updateAutoCopy(); chrome.storage.local.set({autoCopy}); };
-  const archiveToggle=button('点赞自动收下','auto-archive','点赞成功后后台保存整组原图与出处到本机；云盘尚未连接');archiveToggle.setAttribute('aria-pressed','true');autoToggle.after(archiveToggle);
+  const archiveToggle=button('点赞自动收下','auto-archive','点赞成功后后台保存整组原图与出处到本机；连接云盘后另行同步');archiveToggle.setAttribute('aria-pressed','true');autoToggle.after(archiveToggle);
   function updateAutoArchive(){archiveToggle.textContent=autoArchive?'点赞自动收下':'手动收下';archiveToggle.setAttribute('aria-pressed',String(autoArchive));}
   archiveToggle.onclick=async()=>{archiveToggle.disabled=true;try{const next=!autoArchive;await chrome.storage.local.set({autoArchive:next});autoArchive=next;updateAutoArchive();}catch(e){toast('设置未保存：'+e.message);}finally{archiveToggle.disabled=false;}};
   chrome.storage.local.get({autoArchive:true}).then(p=>{autoArchive=p.autoArchive!==false;updateAutoArchive();}).catch(()=>{});
   chrome.storage.onChanged.addListener((changes,area)=>{if(area==='local'&&changes.autoArchive){autoArchive=changes.autoArchive.newValue!==false;updateAutoArchive();}});
   const helperButton = button('多图助手', 'helper-settings', '安装和检查 Windows 多图剪贴板助手'); $('.helpbtn').before(helperButton);
-  function helperHelp() { $('.helper-guide').classList.remove('hidden'); $('.help').classList.remove('hidden'); }
+  function helperHelp() { if($('.settings')?.classList.contains('hidden'))openModal('.settings'); $('.helper-guide').classList.remove('hidden'); $('.help').classList.remove('hidden'); }
   helperButton.onclick = helperHelp;
   const helperGuide = document.createElement('div'); helperGuide.className = 'helper-guide hidden';
   const helperText = document.createElement('p'); helperText.textContent = '首次使用：双击安装包 native 文件夹中的安装小助手.cmd，将下面的插件 ID 粘贴到安装窗口。无需管理员权限；只在复制整组时启动，不联网。QQ 可能按图片或文件接收，请先试发一组。';
@@ -952,7 +952,7 @@
     if (!open) return;
     if (fallbackAnchor && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); const anchor = fallbackAnchor; closeFallback(); anchor.focus(); return; }
     if (nativeMenu.active) { if (e.key === 'Escape' && !nativeMenu.hasDialog) { e.preventDefault(); e.stopPropagation(); nativeMenu.close(); } return; }
-    const modal = !$('.hidemanager').classList.contains('hidden') ? '.hidemanager' : !$('.videoviewer').classList.contains('hidden') ? '.videoviewer' : !$('.stitcher').classList.contains('hidden') ? '.stitcher' : !$('.viewer').classList.contains('hidden') ? '.viewer' : null;
+    const modal = !$('.settings').classList.contains('hidden') ? '.settings' : !$('.hidemanager').classList.contains('hidden') ? '.hidemanager' : !$('.videoviewer').classList.contains('hidden') ? '.videoviewer' : !$('.stitcher').classList.contains('hidden') ? '.stitcher' : !$('.viewer').classList.contains('hidden') ? '.viewer' : null;
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (modal) closeModal(modal); else toggle(); }
     if (viewGroup && ['ArrowLeft', 'ArrowRight'].includes(e.key)) { e.preventDefault(); turn(viewGroup, e.key === 'ArrowLeft' ? -1 : 1); refreshViewer(); }
     if (modal && e.key === 'Tab') { const focusable = [...$(modal).querySelectorAll('button:not(:disabled),a[href],select,input')].filter(el => el.getClientRects().length); const first = focusable[0], last = focusable.at(-1); if (e.shiftKey && root.activeElement === first) { e.preventDefault(); last.focus(); } else if (!e.shiftKey && root.activeElement === last) { e.preventDefault(); first.focus(); } }
@@ -965,5 +965,6 @@
       returnTarget = XIFNavigation.restore(pending.returnTo, location.origin); toggle();
     }
   } catch { /* A normal visit still starts with the launch button. */ }
+  new XIFSettingsUI({root,open:openModal,close:closeModal,cloud:()=>message({action:'library-open',view:'drive'}).catch(e=>toast(e.message))});
   updateHistoryTabs();
 })();
