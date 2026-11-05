@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.18</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.19</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -195,6 +195,27 @@
       if (['https://x.com', 'https://twitter.com'].includes(url.origin) && /^\/[A-Za-z0-9_]{1,15}\/?$/.test(url.pathname)) return `https://x.com${url.pathname}`;
     }
     return '';
+  }
+
+  const descriptionCache=new WeakMap();
+  function pictureDescription(article,post,mainPost){
+    const nodes=[...article.querySelectorAll('[data-testid="tweetText"]')].filter(el=>el.closest('article[data-testid="tweet"]')===article).slice(0,8);
+    const texts=nodes.map(el=>(el.textContent||'').replace(/\s+/g,' ').trim().slice(0,300)),signature=mainPost.id+'|'+texts.join('|');
+    let cached=descriptionCache.get(article);
+    if(!cached||cached.signature!==signature){
+      const descriptions=new Map(),unowned=[];
+      nodes.forEach((node,i)=>{
+        let owner='';
+        for(let parent=node.parentElement,depth=0;parent&&parent!==article&&depth<24;parent=parent.parentElement,depth++){
+          const ids=new Set([...parent.querySelectorAll('a[href*="/status/"]')].map(a=>XIF.status(a.href)?.id).filter(Boolean));
+          if(ids.size===1){owner=[...ids][0];break;}
+        }
+        if(owner){if(!descriptions.has(owner))descriptions.set(owner,texts[i]);}else if(texts[i])unowned.push(texts[i]);
+      });
+      if(!descriptions.has(mainPost.id)&&unowned.length===1)descriptions.set(mainPost.id,unowned[0]);
+      cached={signature,descriptions};descriptionCache.set(article,cached);
+    }
+    return cached.descriptions.get(post.id)||'';
   }
   function quotedAuthor(article, post) {
     const handle = [...article.querySelectorAll('a[href*="/status/"]')].map(a => new URL(a.href).pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)(?:\/|$)/)).find(match => match?.[2] === post.id)?.[1];
@@ -692,7 +713,7 @@
         if (!g) {
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
           g.promoted = promotedPosts.has(post.id) || (post.id === mainPost.id && advertised); g.adOnly = advertised; g.sources = new Map([[mainPost.id, advertised]]);
-          g.authorURL = authorURL(article, post, mainPost);
+          g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
           Object.assign(g, tweetStates.get(post.id) || {});
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
@@ -702,6 +723,7 @@
           g.sources.set(mainPost.id, advertised);
           g.adOnly = [...g.sources.values()].every(Boolean);
           if (wasVisible !== visible(g)) adsChanged = true;
+          g.description = pictureDescription(article, post, mainPost) || g.description;
           const profile = authorURL(article, post, mainPost); if (profile) { g.authorURL = profile; g.card.querySelector('.author').href = profile; }
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {

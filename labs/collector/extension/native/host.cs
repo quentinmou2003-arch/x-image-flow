@@ -44,9 +44,24 @@ class XIFClipboardHost {
         }
     }
     static int BigInt(byte[] data, int offset) { return (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3]; }
+    static string ImagePath(string requested, int index, string extension) {
+        var clean = new StringBuilder();
+        foreach (char c in requested) {
+            bool unsafeChar = Array.IndexOf(Path.GetInvalidFileNameChars(), c) >= 0 || Char.IsControl(c) || (c >= '\u200b' && c <= '\u200f') || (c >= '\u202a' && c <= '\u202e') || (c >= '\u2066' && c <= '\u2069');
+            clean.Append(unsafeChar ? '_' : c);
+            if (clean.Length >= 100) break;
+        }
+        string stem = clean.ToString().Trim(' ', '.', '_');
+        if (stem.Length > 0 && Char.IsHighSurrogate(stem[stem.Length - 1])) stem = stem.Substring(0, stem.Length - 1);
+        if (stem.Length == 0) stem = (index + 1).ToString("D2");
+        if (System.Text.RegularExpressions.Regex.IsMatch(stem, @"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) stem = "_" + stem;
+        string candidate = Path.Combine(folder, stem + extension); int suffix = 2;
+        while (File.Exists(candidate)) candidate = Path.Combine(folder, stem + "_" + (suffix++).ToString("D2") + extension);
+        return candidate;
+    }
     static object Handle(Dictionary<string, object> message) {
         string request = Text(message, "requestId"), operation = Text(message, "op");
-        if (operation == "ping") return new { ok = true, requestId = request, version = "1.2.0", gifClipboard = true, maxBatchCount = 20 };
+        if (operation == "ping") return new { ok = true, requestId = request, version = "1.3.0", gifClipboard = true, maxBatchCount = 20, namedFiles = true };
         if (operation == "begin") {
             Reset(); expected = Number(message, "count"); if (expected < 1 || expected > 20) throw new Exception("每批图片数量应为 1–20 张");
             CleanOld(); folder = Path.Combine(Root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
@@ -70,7 +85,7 @@ class XIFClipboardHost {
                     if (pixels + (long)w * h * frames > 100000000) throw new Exception("GIF 总帧尺寸过大");
                     pixels += (long)w * h * frames;
                 }
-                string gifFile = Path.Combine(folder, (index + 1).ToString("D2") + ".gif");
+                string gifFile = ImagePath(Text(message, "name"), index, ".gif");
                 File.WriteAllBytes(gifFile, gif); files.Add(index, gifFile);
                 batchBytes += gif.Length;
                 return new { ok = true, requestId = request };
@@ -84,7 +99,7 @@ class XIFClipboardHost {
             if (Encoding.ASCII.GetString(bytes, 12, 4) != "IHDR") throw new Exception("PNG 文件头无效");
             int width = BigInt(bytes, 16), height = BigInt(bytes, 20);
             if (width < 1 || height < 1 || width > 32767 || height > 32767 || pixels + (long)width * height > 100000000) throw new Exception("整组图片尺寸过大");
-            string file = Path.Combine(folder, (index + 1).ToString("D2") + ".png");
+            string file = ImagePath(Text(message, "name"), index, ".png");
             File.WriteAllBytes(file, bytes); files.Add(index, file); pixels += (long)width * height;
             batchBytes += bytes.Length;
             return new { ok = true, requestId = request };

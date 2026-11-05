@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
     if(msg.action==='bulk-prepare'){
       const items=XIFBulkPlan.validate(msg.items || (Array.isArray(msg.urls)?msg.urls.map(url=>({urls:[url]})):null));
-      return XIFNativeCopy.prepare(sender.tab.id,items.map(item=>item.urls[0]),undefined,false,i=>XIFOffscreen.request({action:'copy',...items[i]}));
+      return XIFNativeCopy.prepare(sender.tab.id,items.map(item=>item.urls[0]),undefined,false,i=>XIFOffscreen.request({action:'copy',...items[i]}),false,items.map(item=>item.name));
     }
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);

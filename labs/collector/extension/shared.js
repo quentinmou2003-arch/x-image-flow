@@ -73,6 +73,16 @@
     const best = candidates[0], gap = candidates[1].cost - best.cost;
     return {...best, suggested: best.cost < .085 && gap > .012 && best.energy > .005, gap};
   }
-  const api = {mediaURL, status, geometry, detect}; scope.XIF = api;
+  function filenamePart(value, limit = 100) {
+    let text=String(value||'').normalize('NFC').replace(/\s+/g,' ').replace(/https?:\/\/\S+/gi,'').replace(/[<>:"/\\|?*\x00-\x1f\x7f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g,'_').replace(/\s+/g,' ').replace(/^[ ._]+|[ ._]+$/g,'');
+    text=text.slice(0,limit).replace(/[\ud800-\udbff]$/,'').replace(/[ ._]+$/,'');
+    if(/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(text))text='_'+text;
+    return text;
+  }
+  function imageName(group, index = 1, stitched = false) {
+    const author=filenamePart(String(group.author||'').replace(/^引用\s*[·:]\s*/,''),28)||'作者未识别',description=filenamePart(group.description,32),id=/^\d{1,30}$/.test(group.id)?group.id:'来源未识别';
+    return filenamePart([author,description||'推文',id,stitched?'拼接':'图'+String(index).padStart(2,'0')].join('_'),100);
+  }
+  const api = {mediaURL, status, geometry, detect, filenamePart, imageName}; scope.XIF = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

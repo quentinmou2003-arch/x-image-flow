@@ -27,7 +27,7 @@ try {
         try { $key = $base.CreateSubKey('Software\Google\Chrome\NativeMessagingHosts\com.ximageflow.clipboard'); try { $key.SetValue('', $manifestPath) } finally { $key.Dispose() } } finally { $base.Dispose() }
     }
     Add-Type -AssemblyName System.Windows.Forms
-    [Windows.Forms.MessageBox]::Show('安装完成。回到拾图，点「多图助手 → 检查连接」。无需重启电脑。普通多图使用独立 PNG 文件剪贴板，GIF 使用动图文件。助手 1.2.0，QQ 的接收形式由 QQ 版本决定。', '拾图') | Out-Null
+    [Windows.Forms.MessageBox]::Show('安装完成。回到拾图，点「多图助手 → 检查连接」。无需重启电脑。普通多图使用独立 PNG 文件剪贴板，GIF 使用动图文件。助手 1.3.0，QQ 的接收形式由 QQ 版本决定。', '拾图') | Out-Null
 } catch {
     Add-Type -AssemblyName System.Windows.Forms
     [Windows.Forms.MessageBox]::Show($_.Exception.Message, '拾图安装未完成') | Out-Null

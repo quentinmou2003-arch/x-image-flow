@@ -30,7 +30,7 @@
       if(this.selected.size-keys.length>=20){this.toast('已选满 20 张，请先移除一张');return false;}
       this.invalidate();
       // Replace this group's old selection at its first queue position.
-      const item={...plan,urls:[...plan.urls],seams:plan.seams.map(s=>({...s}))},next=new Map();let inserted=false;
+      const item={...plan,name:scope.XIF.imageName(g,1,true),urls:[...plan.urls],seams:plan.seams.map(s=>({...s}))},next=new Map();let inserted=false;
       for(const [k,value]of this.selected){if(keys.includes(k)){if(!inserted){next.set(key,item);inserted=true;}}else next.set(k,value);}
       if(!inserted)next.set(key,item);this.selected=next;this.plans.set(g.id,item);this.render();this.toast('拼接图已加入批量队列，按 1 张复制');return true;
     }
@@ -42,7 +42,7 @@
       const row=document.createElement('div');row.className='bulk-row';g.bulkRow=row;row.dataset.group=g.id;row.bulkGroup=g;
       if(photos.length>1){const modes=document.createElement('div');modes.className='bulk-modes';modes.append(this.button('独立图片','bulk-independent',()=>this.independent(g)),this.button('拼接一张','bulk-stitch',()=>this.preview(g)));row.append(modes);}
       const tiles=document.createElement('div');tiles.className='bulk-photos';
-      for(const im of photos)tiles.append(this.tile(im.url,'选择 '+g.author+' 第 '+(g.images.indexOf(im)+1)+' 张图片',()=>this.toggleItem(im.url,{urls:[im.url]})));
+      for(const im of photos)tiles.append(this.tile(im.url,'选择 '+g.author+' 第 '+(g.images.indexOf(im)+1)+' 张图片',()=>this.toggleItem(im.url,{urls:[im.url],name:scope.XIF.imageName(g,g.images.indexOf(im)+1)})));
       row.append(tiles);
       if(photos.length>1){const result=document.createElement('div');result.className='bulk-result';result.append(this.tile(this.key(g),'选择 '+g.author+' 的拼接图',()=>{const plan=this.plans.get(g.id);if(plan)this.toggleItem(this.key(g),plan);},photos[0].url),this.button('调整拼接','bulk-edit',()=>this.preview(g)));row.append(result);}
       g.media.after(row);this.paint(row);
@@ -58,7 +58,7 @@
     render(){this.toggle.setAttribute('aria-pressed',String(this.active));const joined=[...this.selected.values()].filter(p=>p.urls.length>1).length;this.label.textContent=this.preparing?'正在准备图片…':'已选 '+this.selected.size+' / 20 张'+(joined?' · 含 '+joined+' 张拼接图':'')+' · 按选择顺序复制';this.copy.textContent=this.ready?'图片已准备 · 点击复制':this.selected.size?'复制所选 '+this.selected.size+' 张':'复制所选图片';this.copy.disabled=this.preparing||!this.selected.size;this.clear.disabled=this.exit.disabled=this.preparing;for(const row of this.root.querySelectorAll('.bulk-row'))this.paint(row);}
     async execute(){
       if(this.preparing||!this.selected.size)return;if(this.busy()){this.toast('上一组还在复制，请稍候');return;}
-      const items=[...this.selected.values()].map(p=>({urls:[...p.urls],...(p.mode?{mode:p.mode,blend:p.blend,seams:p.seams.map(s=>({...s}))}:{})})),urls=items.flatMap(p=>p.urls);this.preparing=true;this.setBusy(true);this.render();let job=this.ready;this.ready=null;
+      const items=[...this.selected.values()].map(p=>({urls:[...p.urls],name:p.name,...(p.mode?{mode:p.mode,blend:p.blend,seams:p.seams.map(s=>({...s}))}:{})})),urls=items.flatMap(p=>p.urls);this.preparing=true;this.setBusy(true);this.render();let job=this.ready;this.ready=null;
       try{
         await this.aborting;if(!document.hasFocus())throw Error('请切回 X 再点复制');
         if(!job)job=await this.message({action:'bulk-prepare',items});
