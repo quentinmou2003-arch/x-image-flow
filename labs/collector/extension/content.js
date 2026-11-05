@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.8</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.9</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -182,7 +182,7 @@
     return r;
   };
   function toast(text) { $('.toast').textContent = text; $('.toast').classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('.toast').classList.add('hidden'), 5500); }
-  const bulkPicker=new XIFBulkPicker({root,groups:()=>[...groups.values()].filter(visible),message,toast,copied:markCopied,busy:()=>collecting,setBusy:value=>{collecting=value;},helper:helperHelp});
+  const bulkPicker=new XIFBulkPicker({root,groups:()=>[...groups.values()].filter(visible),message,toast,copied:markCopied,busy:()=>collecting,setBusy:value=>{collecting=value;},helper:helperHelp,stitch:openStitch});
   chrome.runtime.onMessage.addListener((msg,sender)=>{if(sender.id===chrome.runtime.id&&msg.type==='bulk-copy-progress')bulkPicker.progress(msg);});
   function button(label, className, title) { const b = document.createElement('button'); b.className = className; b.textContent = label; if (title) b.title = title; return b; }
   function postOf(article) { return XIF.status(article.querySelector('a[href*="/status/"] time')?.closest('a')?.href || article.querySelector('a[href*="/status/"]')?.href); }
@@ -482,7 +482,7 @@
     g.likeButton = button('', 'like'); g.likeButton.innerHTML = `${svg('heart')}<span>喜欢</span>`;
     g.bookmarkButton = button('', 'bookmark'); g.bookmarkButton.innerHTML = `${svg('bookmark')}<span>书签</span>`;
     g.likeButton.onclick = () => socialAction(g, 'like'); g.bookmarkButton.onclick = () => socialAction(g, 'bookmark');
-    g.stitch = button('', 'stitch', '检测并拼接这组图片'); g.stitch.innerHTML = `${svg('stitch')}<span>拼接</span>`; g.stitch.onclick = () => openStitch(photosOf(g), g.suggestion);
+    g.stitch = button('', 'stitch', '检测并拼接这组图片'); g.stitch.innerHTML = `${svg('stitch')}<span>拼接</span>`; g.stitch.onclick = () => bulkPicker.active ? bulkPicker.preview(g) : openStitch(photosOf(g), g.suggestion);
     social.append(g.likeButton, g.bookmarkButton, g.stitch);
     const actions = document.createElement('div'); actions.className = 'actions'; const copy = button('复制 PNG', 'copy primary'); const save = button('', 'save', '保存当前图片 PNG'); save.innerHTML = svg('download'); save.setAttribute('aria-label', '保存 PNG');
     g.copy = copy; g.save = save;
@@ -620,7 +620,7 @@
   function pumpAnalysis() {
     while (open && analyzing < 2 && analysisQueue.length) {
       const {g, key, urls} = analysisQueue.shift(); if (!visible(g)) { g.analysisKey = null; continue; } analyzing++;
-      message({action: 'analyze', urls}).then(r => { if (g.analysisKey !== key) return; g.suggestion = r.suggestion; g.stitch.classList.toggle('suggested', r.suggestion.suggested); g.stitch.querySelector('span').textContent = r.suggestion.suggested ? '疑似切片' : '拼接'; g.stitch.title = r.suggestion.suggested ? '边缘连续，点击预览拼接' : '手动拼接这组图片'; }).catch(() => { g.analysisKey = null; }).finally(() => { analyzing--; pumpAnalysis(); });
+      message({action: 'analyze', urls}).then(r => { if (g.analysisKey !== key) return; g.suggestion = r.suggestion; g.stitch.classList.toggle('suggested', r.suggestion.suggested); g.stitch.querySelector('span').textContent = r.suggestion.suggested ? '疑似切片' : '拼接'; g.stitch.title = r.suggestion.suggested ? '边缘连续，点击预览拼接' : '手动拼接这组图片'; bulkPicker.update(g); }).catch(() => { g.analysisKey = null; }).finally(() => { analyzing--; pumpAnalysis(); });
     }
   }
   function mediaKey(im) { return `${im.type === 'video' ? 'video' : 'image'}:${im.preview ? new URL(im.preview).pathname : im.key || im.order}`; }
@@ -822,7 +822,7 @@
   zoomImage.onpointerup = zoomImage.onpointercancel = zoomImage.onlostpointercapture = () => { drag = null; paintZoom(); };
   zoomImage.title = '滚轮缩放 · 双击放大/还原 · 放大后拖动查看';
   $('.viewcopy').onclick = () => XIFMotion.isGIF(viewGroup.images[viewGroup.index]) ? copyGIF(viewGroup, $('.viewcopy')) : act($('.viewcopy'), 'copy', [viewGroup.images[viewGroup.index].url]); $('.viewsave').onclick = () => act($('.viewsave'), 'download', [viewGroup.images[viewGroup.index].url]);
-  $('.viewstitch').onclick = () => { const g = viewGroup; closeModal('.viewer'); openStitch(photosOf(g), g.suggestion); };
+  $('.viewstitch').onclick = () => { const g = viewGroup; closeModal('.viewer'); if(bulkPicker.active)bulkPicker.preview(g);else openStitch(photosOf(g), g.suggestion); };
   const player = $('.player');
   function videoStatus(text) { $('.videostatus').textContent = text; $('.videostatus').classList.toggle('hidden', !text); }
   function stopVideo() { videoSession = null; player.onloadedmetadata = null; player.pause(); player.removeAttribute('src'); player.removeAttribute('poster'); player.load(); }
@@ -851,12 +851,14 @@
   player.addEventListener('error', () => { if (videoSession?.source) videoStatus('视频加载失败，可切换清晰度或打开原推文'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && videoSession) player.pause(); });
   function setMode(s, mode) { s.mode = mode; s.seams = []; root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode)); }
-  async function openStitch(images, suggestion) {
-    if (images.length < 2) return; const s = {images: images.map(im => ({...im})), mode: 'horizontal', blend: true, seams: [], version: 0, touched: false}; stitchSession = s;
+  async function openStitch(images, suggestion, options = {}) {
+    if (images.length < 2) return; const s = {images: images.map(im => ({...im})), mode: 'horizontal', blend: true, seams: [], version: 0, touched: false, onConfirm: options.onConfirm, confirmedPlan: null}; stitchSession = s;
+    $('.stitchqueue').classList.toggle('hidden', !s.onConfirm); $('.stitchqueue').disabled = true;
     $('.blend input').checked = true; $('.seamcontrols').replaceChildren(); $('.alignmentnote').textContent = ''; openModal('.stitcher'); $('.stitched').classList.add('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = true;
     $('[data-mode="grid"]').disabled = images.length !== 4; setMode(s, 'horizontal'); renderOrder(s);
     $('.detectnote').textContent = '正在比较相邻边缘…'; $('.detectnote').classList.remove('good');
-    if (suggestion) applySuggestion(s, suggestion); else {
+    if(options.plan){s.images=options.plan.urls.map(url=>s.images.find(im=>im.url===url)).filter(Boolean);s.touched=true;setMode(s,options.plan.mode);s.blend=options.plan.blend;s.seams=options.plan.seams.map(seam=>({...seam}));$('.blend input').checked=s.blend;$('.detectnote').textContent='已恢复上次确认的拼接，可继续调整。';renderOrder(s);requestPreview(s);}
+    else if (suggestion) applySuggestion(s, suggestion); else {
       requestPreview(s);
       try { const r = await message({action: 'analyze', urls: s.images.map(im => im.url)}); if (stitchSession === s && !s.touched) applySuggestion(s, r.suggestion); }
       catch { if (stitchSession === s) $('.detectnote').textContent = '自动检测暂不可用，可手动调整方向和顺序。'; }
@@ -902,11 +904,12 @@
   }
   let previewTimer;
   function requestPreview(s) {
+    s.confirmedPlan = null; $('.stitchqueue').disabled = true;
     const version = ++s.version; clearTimeout(previewTimer); $('.previewstatus').textContent = '正在生成预览…'; $('.previewstatus').classList.remove('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = true;
     $('.redetect').disabled = s.images.length < 2;
     if (s.images.length < 2) { $('.stitched').classList.add('hidden'); $('.previewstatus').textContent = '至少需要两张图片才能拼接，请关闭后重新选择图片。'; return; }
     previewTimer = setTimeout(async () => {
-      try { const r = await message({action: 'preview', urls: s.images.map(im => im.url), mode: s.mode, blend: s.blend, seams: s.seams}); if (stitchSession !== s || version !== s.version) return; renderSeams(s, r.seams || []); $('.stitched').src = r.data; $('.stitched').classList.remove('hidden'); $('.previewstatus').classList.add('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = false; }
+      try { const r = await message({action: 'preview', urls: s.images.map(im => im.url), mode: s.mode, blend: s.blend, seams: s.seams}); if (stitchSession !== s || version !== s.version) return; s.confirmedPlan={urls:s.images.map(im=>im.url),mode:s.mode,blend:false,seams:(r.seams||[]).map(seam=>({overlap:seam.overlap,shift:seam.shift}))}; $('.stitchqueue').disabled=false; renderSeams(s, r.seams || []); $('.stitched').src = r.data; $('.stitched').classList.remove('hidden'); $('.previewstatus').classList.add('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = false; }
       catch (e) { if (stitchSession === s && version === s.version) {
         if (s.blend) { s.blend = false; s.seams = []; $('.blend input').checked = false; $('.detectnote').textContent = '自动对齐未完成，已切换为普通拼接，可手动调整接缝。'; requestPreview(s); return; }
         $('.stitched').classList.add('hidden'); $('.previewstatus').textContent = `预览失败：${e.message}。点击拼接方向可重试。`;
@@ -919,6 +922,8 @@
     const s = stitchSession; if (!s || s.images.length < 2) return; const version = s.version; $('.redetect').disabled = true;
     try { const r = await message({action: 'analyze', urls: s.images.map(im => im.url)}); if (stitchSession === s && s.version === version) applySuggestion(s, r.suggestion); } catch (e) { toast(e.message); } finally { if (stitchSession === s) $('.redetect').disabled = s.images.length < 2; }
   };
+  const stitchQueueButton=button('确认拼接 · 加入批量','stitchqueue primary');stitchQueueButton.classList.add('hidden');$('.stitchfoot').append(stitchQueueButton);
+  stitchQueueButton.onclick=()=>{const s=stitchSession;if(!s?.onConfirm||!s.confirmedPlan||stitchQueueButton.disabled)return;if(s.onConfirm(s.confirmedPlan)!==false)closeModal('.stitcher');};
   $('.stitchcopy').onclick = () => { const s = stitchSession; act($('.stitchcopy'), 'copy', s.images.map(im => im.url), s.mode, s.blend, s.seams); };
   $('.stitchsave').onclick = () => { const s = stitchSession; act($('.stitchsave'), 'download', s.images.map(im => im.url), s.mode, s.blend, s.seams); };
   document.addEventListener('keydown', e => {

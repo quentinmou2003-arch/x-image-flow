@@ -1,5 +1,5 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js');
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js');
 chrome.action.onClicked.addListener(async tab => {
   if (/^https:\/\/(x|twitter)\.com\//.test(tab.url || '')) {
     try { await chrome.tabs.sendMessage(tab.id, {type: 'toggle'}); } catch { await chrome.tabs.reload(tab.id); }
@@ -12,9 +12,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.action === 'connection-check') return {ok: true};
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
     if(msg.action==='bulk-prepare'){
-      if(!Array.isArray(msg.urls)||msg.urls.length<1||msg.urls.length>20)throw Error('每批支持 1–20 张照片');
-      const urls=msg.urls.map(url=>XIF.mediaURL(url));if(new Set(urls).size!==urls.length)throw Error('所选图片存在重复');
-      return XIFNativeCopy.prepare(sender.tab.id,urls);
+      const items=XIFBulkPlan.validate(msg.items || (Array.isArray(msg.urls)?msg.urls.map(url=>({urls:[url]})):null));
+      return XIFNativeCopy.prepare(sender.tab.id,items.map(item=>item.urls[0]),undefined,false,i=>XIFOffscreen.request({action:'copy',...items[i]}));
     }
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);

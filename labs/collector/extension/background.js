@@ -1,5 +1,5 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js');
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js');
 const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,changed:type=>libraryChanged(type)});
 const runDriveSync=()=>driveSync.pump().catch(error=>console.error('云同步暂停：',error.message));
 const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,changed:libraryChanged});
@@ -34,7 +34,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       if (msg.action === 'library-enqueue') { const job=await archiveQueue.add(msg.entry); runArchiveQueue(); return {ok:true,id:job.id,state:job.state}; }
       if (msg.action === 'library-queue-retry') { if(!/^\d{1,30}$/.test(msg.id))throw Error('队列编号无效');await archiveQueue.retry(msg.id);runArchiveQueue();return {ok:true}; }
       if (msg.action === 'library-save') { const entry=await XIFLibrary.save(msg.entry); await libraryChanged('library-change',entry.id); return {ok:true,id:entry.id}; }
-      if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>20)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
+      if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>80)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-edit' && ownLibrary) { await XIFLibrary.edit(msg.id,msg.patch||{}); await libraryChanged('library-change',msg.id);return {ok:true}; }
       if (msg.action === 'library-delete' && ownLibrary) { await XIFLibrary.remove(msg.id); await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-local-prepare' && ownLibrary) {
@@ -57,9 +57,8 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.action === 'connection-check') return {ok: true};
     if (msg.action === 'helper-check') return XIFNativeCopy.check();
     if(msg.action==='bulk-prepare'){
-      if(!Array.isArray(msg.urls)||msg.urls.length<1||msg.urls.length>20)throw Error('每批支持 1–20 张照片');
-      const urls=msg.urls.map(url=>XIF.mediaURL(url));if(new Set(urls).size!==urls.length)throw Error('所选图片存在重复');
-      return XIFNativeCopy.prepare(sender.tab.id,urls);
+      const items=XIFBulkPlan.validate(msg.items || (Array.isArray(msg.urls)?msg.urls.map(url=>({urls:[url]})):null));
+      return XIFNativeCopy.prepare(sender.tab.id,items.map(item=>item.urls[0]),undefined,false,i=>XIFOffscreen.request({action:'copy',...items[i]}));
     }
     if (msg.action === 'batch-commit') return XIFNativeCopy.commit(sender.tab.id, msg.jobId);
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
