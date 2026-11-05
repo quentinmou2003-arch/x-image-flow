@@ -1,6 +1,11 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {DriveClient,DriveError,digest,allowed}=require('../labs/collector/extension/drive-client.js');
 const {DriveSync,KEY}=require('../labs/collector/extension/drive-sync.js');
+test('Drive fetch keeps the browser global receiver instead of invoking a native API on DriveClient',async()=>{
+ let called=false;
+ const client=new DriveClient({token:'test-only',fetcher:async function(url,options){assert.equal(this,globalThis);assert.equal(options.headers.Authorization,'Bearer test-only');called=true;return new Response('{}',{status:200});}});
+ assert.equal((await client.request('https://www.googleapis.com/drive/v3/about?fields=user')).status,200);assert.equal(called,true);
+});
 function service(){
  const files=new Map(),sessions=new Map(),calls=[];let sequence=0,uploads=0,account='accountA',lostAt=0;
  const json=(value,status=200)=>new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json'}});

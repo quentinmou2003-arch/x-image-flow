@@ -7,7 +7,7 @@
   function allowed(value){const url=new URL(value);if(url.origin!=='https://www.googleapis.com'||!/^\/(?:upload\/)?drive\/v3\//.test(url.pathname)||url.username||url.password)throw new DriveError('拒绝异常的云端上传地址','invalid');return url.href;}
   async function digest(blob){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',await blob.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');}
   class DriveClient{
-    constructor({token,fetcher=fetch,guard=async()=>{},invalidate=async()=>{},signal}){Object.assign(this,{token,fetcher,guard,invalidate,signal});}
+    constructor({token,fetcher=fetch,guard=async()=>{},invalidate=async()=>{},signal}){Object.assign(this,{token,guard,invalidate,signal});this.fetcher=fetcher.bind(scope);}
     async request(url,options={},accept=[]){
       await this.guard();
       const target=allowed(url),controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,25000);this.signal?.addEventListener('abort',abort,{once:true});if(this.signal?.aborted)abort();
