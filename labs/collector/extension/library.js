@@ -25,14 +25,15 @@
     }finally{if(job)await message({action:'batch-abort',jobId:job.jobId}).catch(()=>{});busy=false;}
   }
   async function download(blob,filename){const url=URL.createObjectURL(blob);try{await chrome.downloads.download({url,filename,saveAs:false});}finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}}
-  async function exportPhotos(entry,photos=entry.photos){for(const photo of photos){const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图缺失');await download(asset.blob,'XIF-Library/'+entry.id+'-'+(entry.photos.indexOf(photo)+1)+'.'+extension(asset.mime));}notice('原图导出已开始');}
+  async function exportPhotos(entry,photos=entry.photos){for(const photo of photos){const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图缺失');await download(asset.blob,'XIF-Library/'+XIF.imageName(entry,entry.photos.indexOf(photo)+1)+'.'+extension(asset.mime));}notice('原图导出已开始');}
   async function refresh(){entries=(await XIFLibrary.all('entries')).sort((a,b)=>b.createdAt-a.createdAt);const stats=await XIFLibrary.assetStats();$('#post-count').textContent=entries.length;$('#image-count').textContent=stats.count;$('#bytes').textContent=(stats.bytes/1024/1024).toFixed(1)+' MB';await render();await renderQueue();await renderDrive();}
   const cloudLabel=job=>job?.state==='synced'?'已入云':job?.state==='uploading'?'上传中 '+job.done+'/'+job.total:job?.state==='failed'?'云端同步失败':'待上传';
   function cloudPills(state){if(!state)return;const latest=new Map();for(const job of [...state.jobs].sort((a,b)=>b.createdAt-a.createdAt))if(!latest.has(job.entryId))latest.set(job.entryId,job);for(const card of document.querySelectorAll('.card[data-id]')){let pill=card.querySelector('.cloud-pill');if(!pill){pill=document.createElement('span');pill.className='cloud-pill';card.querySelector('.state-line').after(pill);}const job=latest.get(card.dataset.id);pill.textContent=job?cloudLabel(job):state.enabled?'待同步':'云盘未连接';pill.classList.toggle('synced',job?.state==='synced');}}
   async function renderDrive(){
     const state=await message({action:'drive-status'});driveState=state;
     $('#drive-status').textContent=state.enabled?(state.paused?'同步暂停 · ':'已连接 · ')+(state.account?.email||state.account?.name||'Google Drive'):'未连接';
-    $('#drive-connect').textContent=state.enabled?'重新授权并同步':'连接并同步收藏';$('#drive-disconnect').hidden=!state.enabled;
+    $('#drive-connect').textContent=state.enabled?'管理授权 / 重连':'连接并开启自动同步';$('#drive-disconnect').hidden=!state.enabled;
+    $('#drive-description').textContent=state.enabled?'自动同步已开启：新收下的整组原图与出处会自动上传，断网后续传。关闭 Chrome 时暂停，重新打开后继续；授权失效时才需重连。':'首次连接后，已有收藏与之后新收下的原图将自动同步，不需要每次点击上传。';
     $('#drive-error').textContent=state.error;$('#drive-folder').hidden=!state.folder;if(state.folder)$('#drive-folder').href=state.folder;
     if(!state.configured){$('#drive-setup').open=true;$('#drive-error').textContent='首次需配置 Google 应用客户端 ID，当前原图仍在本机。';}
     $('.cloud-status').textContent=state.enabled?'本机保存与云端同步分开显示':'云盘未连接 · 本机保存继续工作';
@@ -90,9 +91,10 @@
   $('#search').oninput=()=>{clearTimeout(refreshTimer);refreshTimer=setTimeout(()=>{pageSize=50;render();},120);};
   $('#state').onchange=()=>{pageSize=50;render();};$('#more').onclick=()=>{pageSize+=50;render();};
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
-    const assets=await XIFLibrary.all('assets'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)]));
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.12',exportedAt:new Date().toISOString(),entries:(await XIFLibrary.all('entries')).map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+p.hash+'.'+suffix.get(p.hash)}))}))};
-    const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+a.hash+'.'+extension(a.mime),blob:a.blob}))];
+    const assets=await XIFLibrary.all('assets'),entries=await XIFLibrary.all('entries'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)])),names=new Map(),used=new Set();
+    for(const e of [...entries].sort((a,b)=>a.createdAt-b.createdAt))for(const [i,p]of e.photos.entries()){if(names.has(p.hash))continue;let name=XIF.imageName(e,i+1)+'.'+suffix.get(p.hash);if(used.has(name.toLowerCase()))name=XIF.imageName(e,i+1)+'_'+p.hash.slice(0,12)+'.'+suffix.get(p.hash);used.add(name.toLowerCase());names.set(p.hash,name);}
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.13',exportedAt:new Date().toISOString(),entries:entries.map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+names.get(p.hash)}))}))};
+    const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+(names.get(a.hash)||a.hash+'.'+extension(a.mime)),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};
   $('#close-preview').onclick=()=>$('#preview').close();

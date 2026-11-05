@@ -1,5 +1,6 @@
 const test=require('node:test'),assert=require('node:assert/strict');
 const {DriveClient,DriveError,digest,allowed}=require('../labs/collector/extension/drive-client.js');
+require('../labs/collector/extension/shared.js');
 const {DriveSync,KEY}=require('../labs/collector/extension/drive-sync.js');
 test('Drive fetch keeps the browser global receiver instead of invoking a native API on DriveClient',async()=>{
  let called=false;
@@ -73,4 +74,10 @@ test('account switches pause rather than label old account files as new account 
 });
 test('disconnect stops future uploads and does not delete remote or local originals',async()=>{
  const s=state(),api=service();await seed(s);const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();await sync.pump();const count=api.calls.length;await sync.disconnect();await sync.pump();assert.equal(api.calls.length,count);assert.equal(api.files.size,6);assert.equal(s.maps.assets.size,4);assert.equal((await sync.status()).enabled,false);
+});
+test('new cloud originals use author, Beijing post time and description while retaining exact original bytes',async()=>{
+ const s=state(),api=service();await seed(s);const entry=s.maps.entries.get('100');Object.assign(entry,{description:'雨夜街景',postedAt:'2026-11-05T18:03:04Z'});const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();await sync.pump();const job=[...s.maps.driveJobs.values()][0],metadata=JSON.parse(await api.files.get(job.manifestId).blob.text());assert.equal(metadata.description,'雨夜街景');assert.equal(metadata.postedAt,'2026-11-05T18:03:04.000Z');
+ for(const [i,p]of metadata.photos.entries()){const file=api.files.get(p.fileId);assert.equal(file.name,'Artist_2026-11-06_02-03-04_雨夜街景_100_图0'+(i+1)+'.jpg');assert.deepEqual(new Uint8Array(await file.blob.arrayBuffer()),new Uint8Array(await s.maps.assets.get(p.hash).blob.arrayBuffer()));}
+ const later={...entry,id:'101',author:'Other',href:'https://x.com/other/status/101'};s.maps.entries.set('101',later);await sync.enqueue('101');await sync.pump();assert.equal(api.uploads,6,'shared originals keep their first file/name, only a new source manifest uploads');assert.equal(s.interactive,1,'new collections reuse existing authorization');
+ const resumed=new DriveSync({...s,fetcher:api.fetcher});await resumed.pump();assert.equal(s.interactive,1,'restart does not open another login');
 });

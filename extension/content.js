@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.20</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图</div><div class="sub">X IMAGE FLOW / 02.3.21</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -217,6 +217,7 @@
     }
     return cached.descriptions.get(post.id)||'';
   }
+  function pictureTime(article,post){const node=[...article.querySelectorAll('a[href*="/status/"] time[datetime]')].find(el=>XIF.status(el.closest('a')?.href)?.id===post.id);return XIF.postTime(post.id,node?.getAttribute('datetime'));}
   function quotedAuthor(article, post) {
     const handle = [...article.querySelectorAll('a[href*="/status/"]')].map(a => new URL(a.href).pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)(?:\/|$)/)).find(match => match?.[2] === post.id)?.[1];
     if (!handle) return '引用 · 作者未识别';
@@ -342,7 +343,7 @@
   function helperHelp() { if($('.settings')?.classList.contains('hidden'))openModal('.settings'); $('.helper-guide').classList.remove('hidden'); $('.help').classList.remove('hidden'); }
   helperButton.onclick = helperHelp;
   const helperGuide = document.createElement('div'); helperGuide.className = 'helper-guide hidden';
-  const helperText = document.createElement('p'); helperText.textContent = '首次使用：双击安装包 native 文件夹中的安装小助手.cmd，将下面的插件 ID 粘贴到安装窗口。无需管理员权限；只在复制整组时启动，不联网。QQ 可能按图片或文件接收，请先试发一组。';
+  const helperText = document.createElement('p'); helperText.textContent = '首次使用：双击安装包 native 文件夹中的安装小助手.cmd，安装器会自动识别当前目录的插件 ID，无法识别时才需要粘贴下面的 ID。无需管理员权限；只在复制整组时启动，不联网。QQ 可能按图片或文件接收，请先试发一组。';
   const helperID = document.createElement('input'); helperID.readOnly = true; helperID.value = chrome.runtime.id; helperID.setAttribute('aria-label', '插件 ID');
   const copyID = button('复制插件 ID', ''); copyID.onclick = () => navigator.clipboard.writeText(chrome.runtime.id).then(() => toast('插件 ID 已复制'), e => toast(e.message));
   const helperCheck = button('检查连接', ''); helperCheck.onclick = async () => { helperCheck.disabled = true; try { await message({action: 'helper-check'}); toast('Windows 多图助手已连接'); } catch (e) { toast(e.message); } finally { helperCheck.disabled = false; } };
@@ -570,7 +571,7 @@
         let suggestion = g.suggestion; if (!suggestion) { try { suggestion = (await message({action: 'analyze', urls: images.map(im => im.url)})).suggestion; } catch { suggestion = null; } }
         const plan = XIFCollection.plan(images, suggestion);
         if (!document.hasFocus()) throw Error('点赞已成功，请切回 X 点击整组复制');
-        job = await message({action: 'batch-prepare', urls: plan.urls, mode: plan.kind === 'slice' ? plan.mode : undefined, blend: plan.blend});
+        job = await message({action: 'batch-prepare', urls: plan.urls, mode: plan.kind === 'slice' ? plan.mode : undefined, blend: plan.blend,names:plan.kind==='slice'?[XIF.imageName(g,1,true)]:images.map(im=>XIF.imageName(g,g.images.findIndex(p=>p.url===im.url)+1))});
         if (!document.hasFocus()) throw Error('图片已准备，请切回 X 点击整组复制');
         const result = await message({action: 'batch-commit', jobId: job.jobId}); job = null;
         if (result.count !== (plan.kind === 'slice' ? 1 : images.length)) throw Error('整组复制数量未确认，请重试');
@@ -604,9 +605,10 @@
   async function act(b, action, urls, mode, blend, seams) {
     if (b.disabled) return; if (action === 'copy' && collecting) { toast('上一组还在复制，请稍候'); return; } if (action === 'copy') collecting = true; const label = b.innerHTML; b.disabled = true; b.textContent = '处理中…';
     try {
+      const owner=[...groups.values()].find(g=>urls.every(url=>g.images.some(im=>im.url===url))),name=XIF.imageName(owner||{author:'多作者',description:'跨推文拼接'},owner?owner.images.findIndex(im=>im.url===urls[0])+1:1,urls.length>1);
       const r = action === 'copy'
         ? await XIFClipboard.copy(JSON.stringify({urls, mode, blend, seams}), () => message({action, urls, mode, blend, seams}))
-        : await message({action, urls, mode, blend, seams});
+        : await message({action, urls, mode, blend, seams,name});
       if (action === 'copy') markCopied(urls);
       toast(action === 'copy' ? `已复制 PNG · ${r.width} × ${r.height}，可到 QQ 粘贴` : `保存 PNG · ${r.width} × ${r.height}`);
     }
@@ -713,7 +715,7 @@
         if (!g) {
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
           g.promoted = promotedPosts.has(post.id) || (post.id === mainPost.id && advertised); g.adOnly = advertised; g.sources = new Map([[mainPost.id, advertised]]);
-          g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
+          g.postedAt=pictureTime(article,post); g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
           Object.assign(g, tweetStates.get(post.id) || {});
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
@@ -723,7 +725,7 @@
           g.sources.set(mainPost.id, advertised);
           g.adOnly = [...g.sources.values()].every(Boolean);
           if (wasVisible !== visible(g)) adsChanged = true;
-          g.description = pictureDescription(article, post, mainPost) || g.description;
+          g.postedAt=pictureTime(article,post)||g.postedAt; g.description = pictureDescription(article, post, mainPost) || g.description;
           const profile = authorURL(article, post, mainPost); if (profile) { g.authorURL = profile; g.card.querySelector('.author').href = profile; }
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {

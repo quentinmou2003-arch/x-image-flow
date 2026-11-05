@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.12</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.13</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -218,6 +218,7 @@
     }
     return cached.descriptions.get(post.id)||'';
   }
+  function pictureTime(article,post){const node=[...article.querySelectorAll('a[href*="/status/"] time[datetime]')].find(el=>XIF.status(el.closest('a')?.href)?.id===post.id);return XIF.postTime(post.id,node?.getAttribute('datetime'));}
   function quotedAuthor(article, post) {
     const handle = [...article.querySelectorAll('a[href*="/status/"]')].map(a => new URL(a.href).pathname.match(/^\/([A-Za-z0-9_]{1,15})\/status\/(\d+)(?:\/|$)/)).find(match => match?.[2] === post.id)?.[1];
     if (!handle) return '引用 · 作者未识别';
@@ -348,7 +349,7 @@
   function helperHelp() { if($('.settings')?.classList.contains('hidden'))openModal('.settings'); $('.helper-guide').classList.remove('hidden'); $('.help').classList.remove('hidden'); }
   helperButton.onclick = helperHelp;
   const helperGuide = document.createElement('div'); helperGuide.className = 'helper-guide hidden';
-  const helperText = document.createElement('p'); helperText.textContent = '首次使用：双击安装包 native 文件夹中的安装小助手.cmd，将下面的插件 ID 粘贴到安装窗口。无需管理员权限；只在复制整组时启动，不联网。QQ 可能按图片或文件接收，请先试发一组。';
+  const helperText = document.createElement('p'); helperText.textContent = '首次使用：双击安装包 native 文件夹中的安装小助手.cmd，安装器会自动识别当前目录的插件 ID，无法识别时才需要粘贴下面的 ID。无需管理员权限；只在复制整组时启动，不联网。QQ 可能按图片或文件接收，请先试发一组。';
   const helperID = document.createElement('input'); helperID.readOnly = true; helperID.value = chrome.runtime.id; helperID.setAttribute('aria-label', '插件 ID');
   const copyID = button('复制插件 ID', ''); copyID.onclick = () => navigator.clipboard.writeText(chrome.runtime.id).then(() => toast('插件 ID 已复制'), e => toast(e.message));
   const helperCheck = button('检查连接', ''); helperCheck.onclick = async () => { helperCheck.disabled = true; try { await message({action: 'helper-check'}); toast('Windows 多图助手已连接'); } catch (e) { toast(e.message); } finally { helperCheck.disabled = false; } };
@@ -554,7 +555,7 @@
   function updateArchiveState(g){if(!g.archive)return;const photos=photosOf(g),known=photos.filter(im=>libraryUrls.has(im.url)).length,own=libraryEntries.get(g.id),job=archiveJobs.get(g.id);g.archive.classList.toggle('hidden',!photos.length);g.archive.classList.toggle('archived',!!own&&photos.every(im=>own.photos.some(p=>p.url===im.url)));g.archive.textContent=own&&photos.every(im=>own.photos.some(p=>p.url===im.url))?'已收下 · 查看':job?.state==='saving'?'正在收下…':job?.state==='pending'?(job.error?'稍后重试 · 查看':'已排队 · 查看'):job?.state==='failed'?'保存失败 · 重试':known?'收过 '+known+'/'+photos.length+' · 仍收':'收下'+(photos.length>1?'整组':'');}
   let libraryRefresh=Promise.resolve();
   function refreshLibrary(){libraryRefresh=libraryRefresh.catch(()=>{}).then(async()=>{const [saved,queue]=await Promise.all([message({action:'library-status'}),message({action:'library-queue-status'})]);libraryUrls=new Set(saved.urls);libraryEntries=new Map(saved.entries.map(e=>[e.id,e]));archiveJobs=new Map(queue.jobs.map(j=>[j.id,j]));const pending=queue.jobs.filter(j=>j.state!=='saved').length;libraryButton.textContent='本地库 '+saved.entries.length+(pending?' · 队列 '+pending:'');for(const g of groups.values())updateCopyState(g);if(libraryFilter!=='all')refreshVisibility();}).catch(e=>toast('本地库状态读取失败：'+e.message));return libraryRefresh;}
-  async function enqueueArchive(g){const images=photosOf(g);if(!images.length)return;await message({action:'library-enqueue',entry:{id:g.id,href:g.href,author:g.author,authorURL:g.authorURL,images:images.map(im=>({url:im.url,alt:im.alt}))}});await refreshLibrary();}
+  async function enqueueArchive(g){const images=photosOf(g);if(!images.length)return;await message({action:'library-enqueue',entry:{id:g.id,href:g.href,author:g.author,authorURL:g.authorURL,description:g.description,postedAt:g.postedAt,images:images.map(im=>({url:im.url,alt:im.alt}))}});await refreshLibrary();}
   async function archive(g){if(g.archiving)return;const images=photosOf(g);if(!images.length)return;const own=libraryEntries.get(g.id),job=archiveJobs.get(g.id);if(own&&images.every(im=>own.photos.some(p=>p.url===im.url))||job&&['saving','pending'].includes(job.state)){message({action:'library-open',id:g.id}).catch(e=>toast(e.message));return;}g.archiving=true;g.archive.disabled=true;try{if(job?.state==='failed')await message({action:'library-queue-retry',id:g.id});else await enqueueArchive(g);await refreshLibrary();toast('已加入收图队列，完成后显示已收下');}catch(e){toast('收图未完成：'+e.message);}finally{g.archiving=false;g.archive.disabled=false;updateArchiveState(g);}}
   const libraryButton=button('本地库','library-button','打开本地收藏原图与收图清单');libraryButton.onclick=()=>message({action:'library-open'}).catch(e=>toast(e.message));$('.helpbtn').before(libraryButton);
   const checklist=document.createElement('div');checklist.className='checklist';
@@ -594,7 +595,7 @@
         let suggestion = g.suggestion; if (!suggestion) { try { suggestion = (await message({action: 'analyze', urls: images.map(im => im.url)})).suggestion; } catch { suggestion = null; } }
         const plan = XIFCollection.plan(images, suggestion);
         if (!document.hasFocus()) throw Error('点赞已成功，请切回 X 点击整组复制');
-        job = await message({action: 'batch-prepare', urls: plan.urls, mode: plan.kind === 'slice' ? plan.mode : undefined, blend: plan.blend});
+        job = await message({action: 'batch-prepare', urls: plan.urls, mode: plan.kind === 'slice' ? plan.mode : undefined, blend: plan.blend,names:plan.kind==='slice'?[XIF.imageName(g,1,true)]:images.map(im=>XIF.imageName(g,g.images.findIndex(p=>p.url===im.url)+1))});
         if (!document.hasFocus()) throw Error('图片已准备，请切回 X 点击整组复制');
         const result = await message({action: 'batch-commit', jobId: job.jobId}); job = null;
         if (result.count !== (plan.kind === 'slice' ? 1 : images.length)) throw Error('整组复制数量未确认，请重试');
@@ -628,9 +629,10 @@
   async function act(b, action, urls, mode, blend, seams) {
     if (b.disabled) return; if (action === 'copy' && collecting) { toast('上一组还在复制，请稍候'); return; } if (action === 'copy') collecting = true; const label = b.innerHTML; b.disabled = true; b.textContent = '处理中…';
     try {
+      const owner=[...groups.values()].find(g=>urls.every(url=>g.images.some(im=>im.url===url))),name=XIF.imageName(owner||{author:'多作者',description:'跨推文拼接'},owner?owner.images.findIndex(im=>im.url===urls[0])+1:1,urls.length>1);
       const r = action === 'copy'
         ? await XIFClipboard.copy(JSON.stringify({urls, mode, blend, seams}), () => message({action, urls, mode, blend, seams}))
-        : await message({action, urls, mode, blend, seams});
+        : await message({action, urls, mode, blend, seams,name});
       if (action === 'copy') markCopied(urls);
       toast(action === 'copy' ? `已复制 PNG · ${r.width} × ${r.height}，可到 QQ 粘贴` : `保存 PNG · ${r.width} × ${r.height}`);
     }
@@ -737,7 +739,7 @@
         if (!g) {
           g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
           g.promoted = promotedPosts.has(post.id) || (post.id === mainPost.id && advertised); g.adOnly = advertised; g.sources = new Map([[mainPost.id, advertised]]);
-          g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
+          g.postedAt=pictureTime(article,post); g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
           Object.assign(g, tweetStates.get(post.id) || {});
           if (post.id === mainPost.id) for (const kind of ['like', 'bookmark']) g[kind] = nativeControl(article, kind)?.on;
           groups.set(g.id, g); makeCard(g); if (visible(g)) place(g); changed = true;
@@ -747,7 +749,7 @@
           g.sources.set(mainPost.id, advertised);
           g.adOnly = [...g.sources.values()].every(Boolean);
           if (wasVisible !== visible(g)) adsChanged = true;
-          g.description = pictureDescription(article, post, mainPost) || g.description;
+          g.postedAt=pictureTime(article,post)||g.postedAt; g.description = pictureDescription(article, post, mainPost) || g.description;
           const profile = authorURL(article, post, mainPost); if (profile) { g.authorURL = profile; g.card.querySelector('.author').href = profile; }
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {

@@ -79,10 +79,16 @@
     if(/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i.test(text))text='_'+text;
     return text;
   }
-  function imageName(group, index = 1, stitched = false) {
-    const author=filenamePart(String(group.author||'').replace(/^引用\s*[·:]\s*/,''),28)||'作者未识别',description=filenamePart(group.description,32),id=/^\d{1,30}$/.test(group.id)?group.id:'来源未识别';
-    return filenamePart([author,description||'推文',id,stitched?'拼接':'图'+String(index).padStart(2,'0')].join('_'),100);
+  function postTime(id, value) {
+    const valid=ms=>Number.isFinite(ms)&&ms>=Date.UTC(2006,0,1)&&ms<=Date.now()+86400000;
+    if(typeof value==='string'&&value.length<=80){const ms=Date.parse(value);if(valid(ms))return new Date(ms).toISOString();}
+    try{if(!/^\d{1,20}$/.test(id))return '';const n=BigInt(id);if(n<1000000000000n||n>9223372036854775807n)return '';const ms=Number((n>>22n)+1288834974657n);return valid(ms)?new Date(ms).toISOString():'';}catch{return '';}
   }
-  const api = {mediaURL, status, geometry, detect, filenamePart, imageName}; scope.XIF = api;
+  function imageName(group, index = 1, stitched = false) {
+    const author=filenamePart(String(group.author||'').replace(/^引用\s*[·:]\s*/,''),20)||'作者未识别',description=filenamePart(group.description,22),id=/^\d{1,30}$/.test(group.id)?group.id:'来源未识别';
+    const iso=postTime(group.id,group.postedAt),time=iso?new Date(Date.parse(iso)+8*3600000).toISOString().slice(0,19).replace('T','_').replace(/:/g,'-'):'时间未知';
+    return filenamePart([author,time,description||'推文',id,stitched?'拼接':'图'+String(index).padStart(2,'0')].join('_'),100);
+  }
+  const api = {mediaURL, status, geometry, detect, filenamePart, imageName, postTime}; scope.XIF = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

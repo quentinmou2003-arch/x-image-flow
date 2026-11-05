@@ -40,7 +40,7 @@
     const images=value.images.map(im=>({url:scope.XIF.mediaURL(im.url),alt:String(im.alt||'图片').slice(0,160)}));
     const sourceURL=new URL(value.href),href='https://x.com'+sourceURL.pathname.split('/status/')[0]+'/status/'+post.id;
     let authorURL='';try{const u=new URL(value.authorURL||value.href);const handle=u.pathname.split('/')[1];if(['https://x.com','https://twitter.com'].includes(u.origin)&&/^[A-Za-z0-9_]{1,15}$/.test(handle)&&handle!=='i')authorURL='https://x.com/'+handle;}catch{}
-    return {id:post.id,href,author:String(value.author||'X 作者').slice(0,100),authorURL,images};
+    return {id:post.id,href,author:String(value.author||'X 作者').slice(0,100),authorURL,description:String(value.description||'').replace(/\s+/g,' ').trim().slice(0,300),postedAt:scope.XIF.postTime(post.id,value.postedAt),images};
   }
   async function save(value) { return enqueue(async()=>{
     const source=input(value), old=await read('entries',source.id), photos=[...(old?.photos||[])], additions=[], aliases=[]; let bytes=0;
@@ -61,7 +61,7 @@
       }
       photos.push({url:im.url,hash:asset.hash,alt:im.alt,copiedAt:0});
     }
-    const entry={id:source.id,href:source.href,author:source.author,authorURL:source.authorURL,photos,tags:old?.tags||[],state:photos.length>(old?.photos.length||0)?'saved':old?.state||'saved',createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()};
+    const entry={id:source.id,href:source.href,author:source.author,authorURL:source.authorURL,description:source.description||old?.description||'',postedAt:source.postedAt||old?.postedAt||'',photos,tags:old?.tags||[],state:photos.length>(old?.photos.length||0)?'saved':old?.state||'saved',createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()};
     await write(['entries','assets','aliases'],tx=>{
       for(const a of additions)tx.objectStore('assets').put(a);
       for(const a of aliases)tx.objectStore('aliases').put(a);

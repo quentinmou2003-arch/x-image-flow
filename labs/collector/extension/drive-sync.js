@@ -2,7 +2,7 @@
   'use strict';
   const KEY='xif-drive-config-v1',SCOPE='https://www.googleapis.com/auth/drive.file';
   const suffix=mime=>({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif'}[mime]||'bin');
-  function snapshot(entry){return {format:'xif-drive-entry-v1',id:entry.id,href:entry.href,author:entry.author,authorURL:entry.authorURL,tags:entry.tags,photos:entry.photos.map(p=>({hash:p.hash,url:p.url,alt:p.alt}))};}
+  function snapshot(entry){return {format:'xif-drive-entry-v1',id:entry.id,href:entry.href,author:entry.author,authorURL:entry.authorURL,description:entry.description||'',postedAt:scope.XIF.postTime(entry.id,entry.postedAt),tags:entry.tags,photos:entry.photos.map(p=>({hash:p.hash,url:p.url,alt:p.alt}))};}
   class DriveSync{
     constructor({store,chrome,changed=async()=>{},fetcher=fetch,now=()=>Date.now()}){Object.assign(this,{store,chrome,changed,fetcher,now});this.running=null;this.token='';this.epoch=0;this.controller=new AbortController();this.lock=Promise.resolve();this.settings=Promise.resolve();}
     serial(work){const p=this.lock.then(work,work);this.lock=p.catch(()=>{});return p;}
@@ -65,11 +65,11 @@
             const photos=[];
             for(const [i,photo]of job.data.photos.entries()){
               await client.guard();const asset=await this.store.read('assets',photo.hash);if(!asset)throw new scope.XIFDrive.DriveError('本机原图已缺失，请重新收下','missing');
-              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,asset.hash+'.'+suffix(asset.mime));photos.push({...photo,fileId});
+              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1)+'.'+suffix(asset.mime));photos.push({...photo,fileId});
               job.done=i+1;await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1});await this.notify();
             }
             const manifest=new Blob([JSON.stringify({...job.data,photos},null,2)],{type:'application/json'}),hash=await scope.XIFDrive.digest(manifest);
-            const manifestId=await this.upload(client,account,root.fileId,manifest,hash,'推文-'+job.entryId+'-'+job.revision.slice(0,12)+'.json');
+            const manifestId=await this.upload(client,account,root.fileId,manifest,hash,scope.XIF.imageName(job.data).replace(/_图01$/,'_出处')+'_'+job.revision.slice(0,12)+'.json');
             await client.guard();await this.store.putDrive('driveJobs',{...job,state:'synced',manifestId,error:'',syncedAt:this.now(),attempts:job.attempts+1});await this.notify();
           }catch(e){
             if(this.epoch!==epoch)return;
