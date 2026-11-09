@@ -13,7 +13,7 @@ class XIFClipboardHost {
     static readonly JavaScriptSerializer Json = new JavaScriptSerializer { MaxJsonLength = 60 * 1024 * 1024, RecursionLimit = 20 };
     static string folder;
     static int expected;
-    static long pixels;
+    static long gifPixels;
     static long batchBytes;
     static readonly SortedDictionary<int, string> files = new SortedDictionary<int, string>();
     static bool committed;
@@ -33,7 +33,7 @@ class XIFClipboardHost {
     }
     static void Reset() {
         if (!committed && Owned(folder) && Directory.Exists(folder)) { try { Directory.Delete(folder, true); } catch {} }
-        folder = null; files.Clear(); expected = 0; pixels = 0; batchBytes = 0; committed = false;
+        folder = null; files.Clear(); expected = 0; gifPixels = 0; batchBytes = 0; committed = false;
     }
     static void CleanOld() {
         Directory.CreateDirectory(Root);
@@ -61,7 +61,7 @@ class XIFClipboardHost {
     }
     static object Handle(Dictionary<string, object> message) {
         string request = Text(message, "requestId"), operation = Text(message, "op");
-        if (operation == "ping") return new { ok = true, requestId = request, version = "1.3.0", gifClipboard = true, maxBatchCount = 20, namedFiles = true };
+        if (operation == "ping") return new { ok = true, requestId = request, version = "1.3.1", gifClipboard = true, maxBatchCount = 20, namedFiles = true, independentPNGs = true };
         if (operation == "begin") {
             Reset(); expected = Number(message, "count"); if (expected < 1 || expected > 20) throw new Exception("每批图片数量应为 1–20 张");
             CleanOld(); folder = Path.Combine(Root, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(folder);
@@ -82,8 +82,8 @@ class XIFClipboardHost {
                 using (var image = Image.FromStream(input, true, true)) {
                     if (image.RawFormat.Guid != System.Drawing.Imaging.ImageFormat.Gif.Guid) throw new Exception("不是有效的 GIF");
                     int frames = image.GetFrameCount(System.Drawing.Imaging.FrameDimension.Time);
-                    if (pixels + (long)w * h * frames > 100000000) throw new Exception("GIF 总帧尺寸过大");
-                    pixels += (long)w * h * frames;
+                    if (gifPixels + (long)w * h * frames > 100000000) throw new Exception("GIF 总帧尺寸过大");
+                    gifPixels += (long)w * h * frames;
                 }
                 string gifFile = ImagePath(Text(message, "name"), index, ".gif");
                 File.WriteAllBytes(gifFile, gif); files.Add(index, gifFile);
@@ -98,9 +98,10 @@ class XIFClipboardHost {
             for (int i = 0; i < signature.Length; i++) if (bytes[i] != signature[i]) throw new Exception("只接受 PNG 图片");
             if (Encoding.ASCII.GetString(bytes, 12, 4) != "IHDR") throw new Exception("PNG 文件头无效");
             int width = BigInt(bytes, 16), height = BigInt(bytes, 20);
-            if (width < 1 || height < 1 || width > 32767 || height > 32767 || pixels + (long)width * height > 100000000) throw new Exception("整组图片尺寸过大");
+            // Independent PNGs stay on disk; only a single-file paste decodes a bitmap.
+            if (width < 1 || height < 1 || width > 32767 || height > 32767 || (long)width * height > 100000000) throw new Exception("第 " + (index + 1) + " 张图片尺寸过大（单张上限一亿像素、边长 32767），请单独保存原图");
             string file = ImagePath(Text(message, "name"), index, ".png");
-            File.WriteAllBytes(file, bytes); files.Add(index, file); pixels += (long)width * height;
+            File.WriteAllBytes(file, bytes); files.Add(index, file);
             batchBytes += bytes.Length;
             return new { ok = true, requestId = request };
         }

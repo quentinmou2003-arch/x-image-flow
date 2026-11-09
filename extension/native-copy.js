@@ -52,7 +52,7 @@
         }
         current.ready = true;
         return {ok: true, jobId: current.id, count};
-      } catch (e) { discard(current); throw e; }
+      } catch (e) { discard(current); if(e.message==='整组图片尺寸过大')throw Error('旧版小助手限制了整批像素，请运行新版 native/安装小助手.cmd 升级到 1.3.1 后重试；无需缩小图片，选择仍保留'); throw e; }
     },
     async prepareGIF(tabId, url) { return this.prepare(tabId, [url], undefined, false, () => XIFOffscreen.request({action: 'gif', url}), true); },
     async commit(tabId, id) {

@@ -93,7 +93,7 @@
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
     const assets=await XIFLibrary.all('assets'),entries=await XIFLibrary.all('entries'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)])),names=new Map(),used=new Set();
     for(const e of [...entries].sort((a,b)=>a.createdAt-b.createdAt))for(const [i,p]of e.photos.entries()){if(names.has(p.hash))continue;let name=XIF.imageName(e,i+1)+'.'+suffix.get(p.hash);if(used.has(name.toLowerCase()))name=XIF.imageName(e,i+1)+'_'+p.hash.slice(0,12)+'.'+suffix.get(p.hash);used.add(name.toLowerCase());names.set(p.hash,name);}
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.13',exportedAt:new Date().toISOString(),entries:entries.map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+names.get(p.hash)}))}))};
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.14',exportedAt:new Date().toISOString(),entries:entries.map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+names.get(p.hash)}))}))};
     const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+(names.get(a.hash)||a.hash+'.'+extension(a.mime)),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};

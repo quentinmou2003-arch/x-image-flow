@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾图 · 收藏实验室",
-  "version": "2.4.0.13",
+  "version": "2.4.0.14",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -87,5 +87,5 @@
       ]
     }
   ],
-  "version_name": "2.4.0-lab.13"
+  "version_name": "2.4.0-lab.14"
 }
