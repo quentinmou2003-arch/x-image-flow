@@ -2,7 +2,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const root=path.join(__dirname,'../labs/collector/extension');
 require(path.join(root,'shared.js'));const store=require(path.join(root,'library-store.js')),zip=require(path.join(root,'archive-zip.js'));
 test('collector lab is a separate valid extension and library page files exist',()=>{
- const m=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));assert.equal(m.version,'2.4.0.14');assert.equal(m.version_name,'2.4.0-lab.14');
+ const m=JSON.parse(fs.readFileSync(path.join(root,'manifest.json'),'utf8'));assert.equal(m.version,'2.4.0.15');assert.equal(m.version_name,'2.4.0-lab.15');
  for(const file of m.content_scripts.flatMap(s=>s.js).concat(['library.html','library.css','library.js','library-store.js','archive-zip.js','native-copy.js']))assert(fs.existsSync(path.join(root,file)),file);
  for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.js')))new Script(fs.readFileSync(path.join(root,file),'utf8'),{filename:file});
 });
@@ -24,4 +24,9 @@ test('archive ZIP stores exact file bytes with standard headers and CRC',async()
 });
 test('archive ZIP rejects traversal and invalid file names',async()=>{
  for(const name of ['../private','/absolute','images/../../bad','images\\bad'])await assert.rejects(zip.zip([{name,blob:new Blob(['x'])}]),/文件名/);
+});
+test('archive ZIP preserves Chinese author names, spaces and UTF-8 flags in both headers',async()=>{
+ const name='images/画师 @artist_杜林与流浪者_图01.png',bytes=new Uint8Array(await(await zip.zip([{name,blob:new Blob(['original'])}])).arrayBuffer()),v=new DataView(bytes.buffer),length=v.getUint16(26,true),central=30+length+8;
+ assert.equal(new TextDecoder().decode(bytes.subarray(30,30+length)),name);assert.equal(v.getUint16(6,true),0x800);assert.equal(v.getUint32(central,true),0x02014b50);assert.equal(v.getUint16(central+8,true),0x800);
+ for(const bad of ['images/a/../b','images/a\u0000.png','images/C:/bad','images//empty','images/trailing.'])await assert.rejects(zip.zip([{name:bad,blob:new Blob(['x'])}]),/文件名/);
 });

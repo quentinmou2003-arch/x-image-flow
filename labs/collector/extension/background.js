@@ -1,6 +1,7 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js');
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js', 'drive-browser.js');
 const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,changed:type=>libraryChanged(type)});
+const driveBrowser=new XIFDriveBrowser.DriveBrowser(driveSync);
 const runDriveSync=()=>driveSync.pump().catch(error=>console.error('云同步暂停：',error.message));
 const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,changed:libraryChanged});
 const runArchiveQueue=()=>archiveQueue.pump().catch(error=>console.error('收图队列暂停：',error.message));
@@ -22,7 +23,15 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       if(!ownLibrary)throw Error('请在本地库连接和管理云盘');
       if(msg.action==='drive-status')return {ok:true,...await driveSync.status()};
       if(msg.action==='drive-connect'){const result=await driveSync.connect();runDriveSync();return {ok:true,...result};}
-      if(msg.action==='drive-disconnect')return driveSync.disconnect();
+      if(msg.action==='drive-disconnect'){driveBrowser.clear();return driveSync.disconnect();}
+      if(msg.action==='drive-browse')return driveBrowser.list(msg.folder,msg.pageToken);
+      if(msg.action==='drive-preview')return driveBrowser.converted(msg.id,true,msg.large===true);
+      if(msg.action==='drive-image-copy')return driveBrowser.converted(msg.id);
+      if(msg.action==='drive-copy-prepare')return driveBrowser.prepare(sender.tab.id,msg.ids);
+      if(msg.action==='drive-folder-create')return driveBrowser.create(msg.name);
+      if(msg.action==='drive-folder-rules')return driveBrowser.rules();
+      if(msg.action==='drive-rule-save')return driveBrowser.saveRule(msg.folder,msg.text,msg.priority);
+      if(msg.action==='drive-categorize')return driveBrowser.categorize(msg.ids,msg.folder);
       if(msg.action==='drive-retry'){if(typeof msg.id!=='string'||msg.id.length>400)throw Error('任务编号无效');await driveSync.retry(msg.id);runDriveSync();return {ok:true};}
       throw Error('云盘操作无效');
     }

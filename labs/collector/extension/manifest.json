@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "拾图 · 收藏实验室",
-  "version": "2.4.0.14",
+  "version": "2.4.0.15",
   "icons": {
     "16": "icons/icon16.png",
     "32": "icons/icon32.png",
@@ -9,7 +9,7 @@
     "128": "icons/icon128.png"
   },
   "minimum_chrome_version": "116",
-  "description": "特别版：顺序收图、本地原图库、防漏清单、标签搜索与归档导出。",
+  "description": "特别版：顺序收图、本机与云端图库、文件夹规则、原图复制及归档导出。",
   "permissions": [
     "activeTab",
     "clipboardWrite",
@@ -87,5 +87,5 @@
       ]
     }
   ],
-  "version_name": "2.4.0-lab.14"
+  "version_name": "2.4.0-lab.15"
 }

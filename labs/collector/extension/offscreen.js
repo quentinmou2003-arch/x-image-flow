@@ -103,11 +103,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   const work = async () => {
     if (msg.action === 'gif') { const r = await XIFGIF.convert(msg.url); return {ok: true, data: await dataURL(r.blob), width: r.width, height: r.height, original: r.original}; }
     if (msg.action === 'revoke') { URL.revokeObjectURL(msg.url); return {ok: true}; }
-    if(msg.action==='local-copy') {
+    if(msg.action==='local-copy'||msg.action==='local-preview') {
       if(typeof msg.data!=='string'||!/^data:image\/(png|jpeg|webp|gif|avif);base64,/.test(msg.data)||msg.data.length>90*1024*1024)throw Error('本地图片格式无效');
       const blob=await (await fetch(msg.data)).blob(),image=await createImageBitmap(blob);
       try {
         if(image.width>32767||image.height>32767||image.width*image.height>100000000)throw Error('本地图片尺寸过大');
+        if(msg.action==='local-preview'){const scale=Math.min(1,(msg.edge===1600?1600:640)/Math.max(image.width,image.height)),canvas=new OffscreenCanvas(Math.max(1,Math.round(image.width*scale)),Math.max(1,Math.round(image.height*scale)));canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);return {ok:true,data:await dataURL(await canvas.convertToBlob({type:'image/jpeg',quality:.78})),width:image.width,height:image.height};}
         let png=blob;
         if(blob.type!=='image/png'){const canvas=new OffscreenCanvas(image.width,image.height);canvas.getContext('2d').drawImage(image,0,0);png=await canvas.convertToBlob({type:'image/png'});}
         if(png.size>40*1024*1024)throw Error('本地 PNG 过大，请导出原文件');
@@ -132,6 +133,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return {ok: true, url, width: result.width, height: result.height};
   };
   // Preserve click order and avoid simultaneous full-size export canvases.
-  const task = ['copy', 'download', 'local-copy'].includes(msg.action) ? (exportQueue = exportQueue.then(work, work)) : work();
+  const task = ['copy', 'download', 'local-copy', 'local-preview'].includes(msg.action) ? (exportQueue = exportQueue.then(work, work)) : work();
   task.then(reply, error => reply({ok: false, error: error.message})); return true;
 });
