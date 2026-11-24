@@ -16,24 +16,25 @@
       return {data,width:image.width,height:image.height};
     }finally{image.close();}
   }
-  async function copy(entry,photos=entry.photos){
+  const displayPhotos=entry=>XIFArchivePresentation.valid(entry)?entry.presentation.photos:entry.photos;
+  async function copy(entry,photos=displayPhotos(entry)){
     if(busy)throw Error('上一组还在复制');busy=true;let job;
     try{
       if(photos.length===1)await XIFClipboard.copy('local:'+photos[0].hash,async()=>png(await XIFLibrary.read('assets',photos[0].hash)));
-      else{job=await message({action:'library-local-prepare',id:entry.id});if(!document.hasFocus())throw Error('图片已准备，请切回收藏库重试');const result=await message({action:'batch-commit',jobId:job.jobId});job=null;if(result.count!==photos.length)throw Error('复制数量未确认');}
-      await message({action:'library-progress',urls:photos.map(p=>p.url)});notice('已复制 '+photos.length+' 张，可到 QQ 粘贴');await refresh();
+      else{job=await message({action:'library-local-prepare',id:entry.id,display:true});if(!document.hasFocus())throw Error('图片已准备，请切回收藏库重试');const result=await message({action:'batch-commit',jobId:job.jobId});job=null;if(result.count!==photos.length)throw Error('复制数量未确认');}
+      await message({action:'library-progress',urls:entry.presentation?.kind==='slice'?entry.photos.map(p=>p.url):photos.map(p=>p.url)});notice('已复制 '+photos.length+' 张，可到 QQ 粘贴');await refresh();
     }finally{if(job)await message({action:'batch-abort',jobId:job.jobId}).catch(()=>{});busy=false;}
   }
   async function download(blob,filename){const url=URL.createObjectURL(blob);try{await chrome.downloads.download({url,filename,saveAs:false});}finally{setTimeout(()=>URL.revokeObjectURL(url),60000);}}
-  async function exportPhotos(entry,photos=entry.photos){for(const photo of photos){const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图缺失');await download(asset.blob,'XIF-Library/'+XIF.imageName(entry,entry.photos.indexOf(photo)+1)+'.'+extension(asset.mime));}notice('原图导出已开始');}
+  async function exportPhotos(entry,photos=entry.photos){for(const photo of photos){const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图缺失');const original=entry.photos.findIndex(p=>p.hash===photo.hash),stitched=original<0&&entry.presentation?.kind==='slice';await download(asset.blob,'XIF-Library/'+XIF.imageName(entry,original>=0?original+1:(photo.sourceIndices?.[0]||0)+1,stitched)+'.'+extension(asset.mime));}notice('文件导出已开始');}
   async function refresh(){entries=(await XIFLibrary.all('entries')).sort((a,b)=>b.createdAt-a.createdAt);const stats=await XIFLibrary.assetStats();$('#post-count').textContent=entries.length;$('#image-count').textContent=stats.count;$('#bytes').textContent=(stats.bytes/1024/1024).toFixed(1)+' MB';await render();await renderQueue();await renderDrive();}
   const cloudLabel=job=>job?.state==='synced'?'已入云':job?.state==='uploading'?'上传中 '+job.done+'/'+job.total:job?.state==='failed'?'云端同步失败':'待上传';
-  function cloudPills(state){if(!state)return;const latest=new Map();for(const job of [...state.jobs].sort((a,b)=>b.createdAt-a.createdAt))if(!latest.has(job.entryId))latest.set(job.entryId,job);for(const card of document.querySelectorAll('.card[data-id]')){let pill=card.querySelector('.cloud-pill');if(!pill){pill=document.createElement('span');pill.className='cloud-pill';card.querySelector('.state-line').after(pill);}const job=latest.get(card.dataset.id);pill.textContent=job?cloudLabel(job):state.enabled?'待同步':'云盘未连接';pill.classList.toggle('synced',job?.state==='synced');}}
+  function cloudPills(state){if(!state)return;const latest=new Map();for(const job of [...state.jobs].sort((a,b)=>b.createdAt-a.createdAt))if(!latest.has(job.entryId))latest.set(job.entryId,job);for(const card of document.querySelectorAll('.card[data-id]')){let pill=card.querySelector('.cloud-pill');if(!pill){pill=document.createElement('span');pill.className='cloud-pill';card.querySelector('.state-line').after(pill);}const job=latest.get(card.dataset.id),entry=entries.find(e=>e.id===card.dataset.id),ready=entry&&XIFArchivePresentation.valid(entry);pill.textContent=!ready?'待准备 PNG':job?cloudLabel(job):state.enabled?'待同步':'云盘未连接';pill.classList.toggle('synced',ready&&job?.state==='synced');}}
   async function renderDrive(){
     const state=await message({action:'drive-status'});driveState=state;
     $('#drive-status').textContent=state.enabled?(state.paused?'同步暂停 · ':'已连接 · ')+(state.account?.email||state.account?.name||'Google Drive'):'未连接';
     $('#drive-connect').textContent=state.enabled?'管理授权 / 重连':'连接并开启自动同步';$('#drive-disconnect').hidden=!state.enabled;
-    $('#drive-description').textContent=state.enabled?'自动同步已开启：新收下的整组原图与出处会自动上传，断网后续传。关闭 Chrome 时暂停，重新打开后继续；授权失效时才需重连。':'首次连接后，已有收藏与之后新收下的原图将自动同步，不需要每次点击上传。';
+    $('#drive-description').textContent=state.enabled?'自动同步已开启：组图逐张保存 PNG，可靠识别的切片先拼成整图。原文件另存备份，整组校验后才显示已入云；断网后续传。':'连接后自动同步 PNG 主图和出处；组图保留多张，切片拼整图，原文件另存备份。';
     $('#drive-error').textContent=state.error;$('#drive-folder').hidden=!state.folder;if(state.folder)$('#drive-folder').href=state.folder;
     if(!state.configured){$('#drive-setup').open=true;$('#drive-error').textContent='首次需配置 Google 应用客户端 ID，当前原图仍在本机。';}
     $('.cloud-status').textContent=state.enabled?'本机保存与云端同步分开显示':'云盘未连接 · 本机保存继续工作';
@@ -43,7 +44,7 @@
   }
   $('#drive-extension-id').value=chrome.runtime.id;
   $('#drive-copy-id').onclick=()=>navigator.clipboard.writeText(chrome.runtime.id).then(()=>notice('扩展 ID 已复制'),e=>notice(e.message));
-  $('#drive-connect').onclick=async()=>{const b=$('#drive-connect');b.disabled=true;$('#drive-status').textContent='正在请求 Google 授权…';try{await message({action:'drive-connect'});notice('已连接，原图将在后台上传');}catch(e){notice(e.message);}finally{b.disabled=false;await renderDrive().catch(e=>notice(e.message));}};
+  $('#drive-connect').onclick=async()=>{const b=$('#drive-connect');b.disabled=true;$('#drive-status').textContent='正在请求 Google 授权…';try{await message({action:'drive-connect'});notice('已连接，PNG 主图与原文件备份将在后台同步');}catch(e){notice(e.message);}finally{b.disabled=false;await renderDrive().catch(e=>notice(e.message));}};
   $('#drive-disconnect').onclick=async()=>{await message({action:'drive-disconnect'});await renderDrive();};
   $('#drive-more').onclick=()=>{driveSize+=10;renderDrive().catch(e=>notice(e.message));};
   async function renderQueue(){
@@ -70,20 +71,23 @@
     else{$('#empty b').textContent='从第一张图开始。';$('#empty p').textContent='在拾图中点赞或点「收下」，整组原图和来源会后台保存。';}
     for(const entry of list.slice(0,pageSize)){
       const card=document.createElement('article');card.className='card';card.dataset.id=entry.id;card.classList.toggle('focused',location.hash==='#'+entry.id);
-      const covers=document.createElement('div');covers.className='covers'+(entry.photos.length===1?' single':'');
-      for(const [index,photo]of entry.photos.entries()){
+      const shown=displayPhotos(entry),stitched=entry.presentation?.kind==='slice'&&shown!==entry.photos;
+      const covers=document.createElement('div');covers.className='covers'+(shown.length===1?' single':'');
+      for(const [index,photo]of shown.entries()){
         const b=button('', '',async()=>{const asset=await XIFLibrary.read('assets',photo.hash);if(!asset)throw Error('原图文件缺失');if(selected?.url)URL.revokeObjectURL(selected.url);selected={entry,photo,url:URL.createObjectURL(asset.blob)};$('#preview img').src=selected.url;$('#preview').showModal();});
-        const img=new Image();img.alt=photo.alt;img.loading='lazy';const badge=document.createElement('span');badge.textContent=(index+1)+'/'+entry.photos.length;b.append(img,badge);covers.append(b);
+        const img=new Image();img.alt=photo.alt;img.loading='lazy';const badge=document.createElement('span');badge.textContent=stitched?'拼接整图':(index+1)+'/'+shown.length;b.append(img,badge);covers.append(b);
         img.dataset.hash=photo.hash;imageObserver.observe(img);
       }
       const meta=document.createElement('div');meta.className='meta';const top=document.createElement('div');top.className='meta-top';
       const author=document.createElement(entry.authorURL?'a':'span');author.className='author';author.textContent=entry.author;if(entry.authorURL){author.href=entry.authorURL;author.target='_blank';author.rel='noopener noreferrer';}
       const source=document.createElement('a');source.className='source';source.textContent='原推文';source.href=entry.href;source.target='_blank';source.rel='noopener noreferrer';top.append(author,source);
-      const date=document.createElement('p');date.className='date';date.textContent=new Date(entry.createdAt).toLocaleDateString('zh-CN')+' · '+entry.photos.length+' 张原图';
+      const date=document.createElement('p');date.className='date';date.textContent=new Date(entry.createdAt).toLocaleDateString('zh-CN')+' · '+(stitched?'1 张整图 · '+entry.photos.length+' 张原片保留':entry.photos.length+' 张组图 · '+(XIFArchivePresentation.valid(entry)?'PNG 主图':'待准备 PNG'));
       const stateLine=document.createElement('div');stateLine.className='state-line';const statePill=document.createElement('span');statePill.className='state-pill';statePill.textContent=entry.state==='sent'?'已发送 · 你确认':entry.state==='copied'?'已复制，待发送':'待处理';stateLine.append(statePill,document.createTextNode('复制 '+entry.photos.filter(p=>p.copiedAt).length+'/'+entry.photos.length));
       const tags=document.createElement('div');tags.className='tags';const field=document.createElement('input');field.value=entry.tags.join('，');field.placeholder='标签：角色、摄影、参考…';field.setAttribute('aria-label','编辑 '+entry.id+' 的标签');tags.append(field,button('保存标签','',async()=>{await message({action:'library-edit',id:entry.id,patch:{tags:field.value}});notice('标签已保存');await refresh();}));
-      const actions=document.createElement('div');actions.className='actions';actions.append(button(entry.photos.length>1?'复制整组':'复制 PNG','primary',()=>copy(entry)),button('导出原图','',()=>exportPhotos(entry)),button(entry.state==='sent'?'重新处理':'我已发送','confirm-sent',async()=>{await message({action:'library-edit',id:entry.id,patch:{state:entry.state==='sent'?'saved':'sent'}});await refresh();}),button('移除','remove',async()=>{if(!confirm('移除这条本地收藏？不影响 X 的点赞或书签，共用原图会保留。'))return;await message({action:'library-delete',id:entry.id});await refresh();}));
-      meta.append(top,date,stateLine,tags,actions);card.append(covers,meta);$('#grid').append(card);
+      const actions=document.createElement('div');actions.className='actions';actions.append(button(stitched?'复制拼接 PNG':shown.length>1?'复制整组':'复制 PNG','primary',()=>copy(entry)),button('导出原文件','',()=>exportPhotos(entry)),button(entry.state==='sent'?'重新处理':'我已发送','confirm-sent',async()=>{await message({action:'library-edit',id:entry.id,patch:{state:entry.state==='sent'?'saved':'sent'}});await refresh();}),button('移除','remove',async()=>{if(!confirm('移除这条本地收藏？不影响 X 的点赞或书签，共用原图会保留。'))return;await message({action:'library-delete',id:entry.id});await refresh();}));
+      const controls=document.createElement('details'),summary=document.createElement('summary');summary.textContent='上传类型 / 修复旧收藏';controls.append(summary);
+      const choice=document.createElement('select');choice.setAttribute('aria-label','上传类型');for(const [value,text]of [['auto','自动判断：切片拼图，组图分开'],['album','普通组图：逐张 PNG'],['horizontal','切片：按原图序横向拼接'],['vertical','切片：按原图序纵向拼接'],...(entry.photos.length===4?[['grid','切片：按原图序四宫格']]:[])]){const option=document.createElement('option');option.value=value;option.textContent=text;choice.append(option);}choice.value=entry.archiveChoice||'auto';controls.append(choice,button('重新处理并同步','',async()=>{await message({action:'library-presentation',id:entry.id,choice:choice.value});notice('已加入重新处理队列，原文件保留；请查看收图和云同步进度');await refresh();}));
+      meta.append(top,date,stateLine,tags,actions,controls);card.append(covers,meta);$('#grid').append(card);
     }
     cloudPills(driveState);
   }
@@ -92,8 +96,8 @@
   $('#state').onchange=()=>{pageSize=50;render();};$('#more').onclick=()=>{pageSize+=50;render();};
   $('#export').onclick=async()=>{if(busy)return;busy=true;$('#export').disabled=true;try{
     const assets=await XIFLibrary.all('assets'),entries=await XIFLibrary.all('entries'),suffix=new Map(assets.map(a=>[a.hash,extension(a.mime)])),names=new Map(),used=new Set();
-    for(const e of [...entries].sort((a,b)=>a.createdAt-b.createdAt))for(const [i,p]of e.photos.entries()){if(names.has(p.hash))continue;let name=XIF.imageName(e,i+1)+'.'+suffix.get(p.hash);if(used.has(name.toLowerCase()))name=XIF.imageName(e,i+1)+'_'+p.hash.slice(0,12)+'.'+suffix.get(p.hash);used.add(name.toLowerCase());names.set(p.hash,name);}
-    const metadata={format:'xif-library-v1',version:'2.4.0-lab.15',exportedAt:new Date().toISOString(),entries:entries.map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+names.get(p.hash)}))}))};
+    for(const e of [...entries].sort((a,b)=>a.createdAt-b.createdAt))for(const list of [e.photos,e.presentation?.photos||[]])for(const [i,p]of list.entries()){if(names.has(p.hash))continue;const stitched=list!==e.photos&&e.presentation?.kind==='slice';let name=XIF.imageName(e,i+1,stitched)+'.'+suffix.get(p.hash);if(used.has(name.toLowerCase()))name=XIF.imageName(e,i+1,stitched)+'_'+p.hash.slice(0,12)+'.'+suffix.get(p.hash);used.add(name.toLowerCase());names.set(p.hash,name);}
+    const metadata={format:'xif-library-v1',version:'2.4.0-lab.16',exportedAt:new Date().toISOString(),entries:entries.map(e=>({...e,photos:e.photos.map(p=>({...p,file:'images/'+names.get(p.hash)})),...(e.presentation?{presentation:{...e.presentation,photos:e.presentation.photos.map(p=>({...p,file:'images/'+names.get(p.hash)}))}}:{})}))};
     const files=[{name:'collection.json',blob:new Blob([JSON.stringify(metadata,null,2)],{type:'application/json'})},...assets.map(a=>({name:'images/'+(names.get(a.hash)||a.hash+'.'+extension(a.mime)),blob:a.blob}))];
     await download(await XIFZip.zip(files),'XIF-collection-'+new Date().toISOString().slice(0,10)+'.zip');notice('收藏 ZIP 导出已开始，包含原图与出处清单');
   }catch(e){notice(e.message);}finally{busy=false;$('#export').disabled=false;}};

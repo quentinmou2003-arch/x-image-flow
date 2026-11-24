@@ -2,9 +2,9 @@
   'use strict';
   const KEY='xif-drive-config-v1',SCOPE='https://www.googleapis.com/auth/drive.file';
   const suffix=mime=>({'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif'}[mime]||'bin');
-  function snapshot(entry){return {format:'xif-drive-entry-v1',id:entry.id,href:entry.href,author:entry.author,authorURL:entry.authorURL,description:entry.description||'',postedAt:scope.XIF.postTime(entry.id,entry.postedAt),tags:entry.tags,photos:entry.photos.map(p=>({hash:p.hash,url:p.url,alt:p.alt}))};}
+  function snapshot(entry){const data={format:'xif-drive-entry-v1',id:entry.id,href:entry.href,author:entry.author,authorURL:entry.authorURL,description:entry.description||'',postedAt:scope.XIF.postTime(entry.id,entry.postedAt),tags:entry.tags,photos:entry.photos.map(p=>({hash:p.hash,url:p.url,alt:p.alt}))};if(entry.presentation?.format==='xif-cloud-png-v1'){data.format='xif-drive-entry-v2';data.presentation=entry.presentation;data.cloudPhotos=entry.presentation.photos;}return data;}
   class DriveSync{
-    constructor({store,chrome,changed=async()=>{},fetcher=fetch,now=()=>Date.now()}){Object.assign(this,{store,chrome,changed,fetcher,now});this.running=null;this.token='';this.epoch=0;this.controller=new AbortController();this.lock=Promise.resolve();this.settings=Promise.resolve();}
+    constructor({store,chrome,changed=async()=>{},prepare=async entry=>entry,fetcher=fetch,now=()=>Date.now()}){Object.assign(this,{store,chrome,changed,prepare,fetcher,now});this.running=null;this.token='';this.epoch=0;this.controller=new AbortController();this.lock=Promise.resolve();this.settings=Promise.resolve();}
     serial(work){const p=this.lock.then(work,work);this.lock=p.catch(()=>{});return p;}
     configured(){return /^[\w.-]+\.apps\.googleusercontent\.com$/.test(this.chrome.runtime.getManifest().oauth2?.client_id||'');}
     async config(){return (await this.chrome.storage.local.get(KEY))[KEY]||{enabled:false};}
@@ -36,7 +36,8 @@
     }
     async enqueue(entryId){return this.serial(async()=>{
       const config=await this.config();if(!config.enabled||!config.account)return;
-      const entry=await this.store.read('entries',entryId);if(!entry?.photos.length)return;
+      let entry=await this.store.read('entries',entryId);if(!entry?.photos.length)return;
+      entry=await this.prepare(entry);if(!entry)return;
       const data=snapshot(entry),revision=await scope.XIFDrive.digest(new Blob([JSON.stringify(data)])),id=config.account.id+':'+entry.id+':'+revision;
       if(await this.store.read('driveJobs',id))return;
       await this.store.putDrive('driveJobs',{id,entryId:entry.id,account:config.account.id,revision,data,state:'pending',attempts:0,nextAt:0,error:'',done:0,createdAt:this.now()});
@@ -46,7 +47,7 @@
       if(job.state==='uploading'||job.state==='synced')return;
       await this.setConfig({...config,paused:false,error:''});await this.store.putDrive('driveJobs',{...job,state:'pending',nextAt:0,attempts:0,error:''});await this.notify();
     }
-    async status(){const c=await this.config();const jobs=c.account?await this.store.driveJobs(c.account.id,['pending','uploading','failed','synced']):[];return {configured:this.configured(),enabled:c.enabled,paused:!!c.paused,account:c.account?{name:c.account.name,email:c.account.email}:null,folder:c.root?.fileId?'https://drive.google.com/drive/folders/'+c.root.fileId:'',error:c.error||'',jobs:jobs.map(j=>({id:j.id,entryId:j.entryId,state:j.state,error:j.error,done:j.done,total:j.data.photos.length,createdAt:j.createdAt}))};}
+    async status(){const c=await this.config();const jobs=c.account?await this.store.driveJobs(c.account.id,['pending','uploading','failed','synced']):[];return {configured:this.configured(),enabled:c.enabled,paused:!!c.paused,account:c.account?{name:c.account.name,email:c.account.email}:null,folder:c.root?.fileId?'https://drive.google.com/drive/folders/'+c.root.fileId:'',error:c.error||'',jobs:jobs.map(j=>({id:j.id,entryId:j.entryId,state:j.state,error:j.error,done:j.done,total:j.data.photos.length+(j.data.cloudPhotos?.length||0),createdAt:j.createdAt}))};}
     pump(){if(this.connecting)return Promise.resolve();if(this.running)return this.running;this.running=this.drain().finally(()=>{this.running=null;});return this.running;}
     async drain(){
       let config=await this.config();if(!config.enabled||config.paused||!config.account)return;
@@ -62,15 +63,36 @@
           if(!await this.store.read('entries',job.entryId)){await this.store.putDrive('driveJobs',{...job,state:'failed',error:'本机收藏已移除',nextAt:0});continue;}
           await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1,error:''});await this.notify();
           try{
+            const current=await this.prepare(await this.store.read('entries',job.entryId));
+            if(await scope.XIFDrive.digest(new Blob([JSON.stringify(snapshot(current))]))!==job.revision){await this.enqueue(job.entryId);await this.store.putDrive('driveJobs',{...job,state:'superseded',error:''});continue;}
+            let backupId='',cloudPhotos=[];
+            const mains=job.data.cloudPhotos||[];
+            job.done=0;
+            for(const [i,photo]of mains.entries()){
+              await client.guard();const asset=await this.store.read('assets',photo.hash);if(!asset||asset.mime!=='image/png')throw new scope.XIFDrive.DriveError('云端 PNG 主图缺失，请重新处理收藏','missing');
+              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1,job.data.presentation.kind==='slice')+'.png');
+              const remote=await client.file(fileId);
+              if(root.backups?.fileId&&remote.parents?.includes(root.backups.fileId))await client.relocate(fileId,root.backups.fileId,root.fileId,asset.blob,asset.hash);
+              cloudPhotos.push({...photo,fileId});job.done=i+1;await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1});await this.notify();
+            }
             const photos=[];
+            const mainHashes=new Set(mains.map(p=>p.hash));
+            const sharedMainHashes=new Set((mains.length?await this.store.all('entries'):[]).flatMap(e=>e.presentation?.photos?.map(p=>p.hash)||e.photos.filter(p=>p.url?.includes('format=png')).map(p=>p.hash)));
             for(const [i,photo]of job.data.photos.entries()){
               await client.guard();const asset=await this.store.read('assets',photo.hash);if(!asset)throw new scope.XIFDrive.DriveError('本机原图已缺失，请重新收下','missing');
-              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1)+'.'+suffix(asset.mime));photos.push({...photo,fileId});
-              job.done=i+1;await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1});await this.notify();
+              let fileId;
+              if(mainHashes.has(photo.hash))fileId=cloudPhotos.find(p=>p.hash===photo.hash).fileId;
+              else{
+                if(mains.length&&!backupId){root.backups=root.backups||{};backupId=await client.backupFolder(root.fileId,root.backups,async()=>{config=await this.config();await this.setConfig({...config,root},epoch);});}
+                fileId=await this.upload(client,account,backupId||root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1)+'.'+suffix(asset.mime));
+                if(backupId&&!sharedMainHashes.has(photo.hash)){const remote=await client.file(fileId);if(remote.parents?.includes(root.fileId))await client.relocate(fileId,root.fileId,backupId,asset.blob,asset.hash);}
+              }
+              photos.push({...photo,fileId});job.done=mains.length+i+1;await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1});await this.notify();
             }
-            const manifest=new Blob([JSON.stringify({...job.data,photos},null,2)],{type:'application/json'}),hash=await scope.XIFDrive.digest(manifest);
+            const manifest=new Blob([JSON.stringify({...job.data,photos,...(mains.length?{cloudPhotos}: {})},null,2)],{type:'application/json'}),hash=await scope.XIFDrive.digest(manifest);
             const manifestId=await this.upload(client,account,root.fileId,manifest,hash,scope.XIF.imageName(job.data).replace(/_图01$/,'_出处')+'_'+job.revision.slice(0,12)+'.json');
             await client.guard();await this.store.putDrive('driveJobs',{...job,state:'synced',manifestId,error:'',syncedAt:this.now(),attempts:job.attempts+1});await this.notify();
+            for(const old of await this.store.driveJobs(account,['pending','failed','synced']))if(old.entryId===job.entryId&&old.id!==job.id)await this.store.putDrive('driveJobs',{...old,state:'superseded',error:''});
           }catch(e){
             if(this.epoch!==epoch)return;
             const attempts=job.attempts+1,stop=['auth','quota','folder','integrity','missing','invalid'].includes(e.code);

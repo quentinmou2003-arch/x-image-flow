@@ -2,8 +2,8 @@
 (function(scope){
   'use strict';
   class ArchiveQueue {
-    constructor({store,changed=async()=>{},now=()=>Date.now()}) {
-      this.store=store;this.changed=changed;this.now=now;this.lock=Promise.resolve();this.running=null;
+    constructor({store,changed=async()=>{},prepare=async()=>{},now=()=>Date.now()}) {
+      this.store=store;this.changed=changed;this.prepare=prepare;this.now=now;this.lock=Promise.resolve();this.running=null;
       this.ready=this.serial(async()=>{
         for(const job of await this.jobs(['saving']))await store.putJob({...job,state:'pending',nextAt:0});
       });
@@ -30,6 +30,7 @@
       });
       await this.notify();
     }
+    async rebuild(id){await this.serial(async()=>{const entry=await this.store.read('entries',id);if(!entry)throw Error('收藏不存在');const source=this.store.input({...entry,images:entry.photos});const old=await this.store.read('jobs',id);await this.store.putJob({id,source,state:'pending',attempts:0,nextAt:0,error:'',createdAt:old?.createdAt||this.now(),updatedAt:this.now()});});await this.notify();}
     async list(){await this.ready;return (await this.jobs(['pending','saving','failed'])).sort((a,b)=>b.createdAt-a.createdAt);}
     pump(){
       if(this.running)return this.running;
@@ -45,7 +46,7 @@
         });
         if(!job)return;
         await this.notify();
-        let error='';try{await this.store.save(job.source);}catch(e){error=String(e?.message||'原图保存失败').slice(0,250);}
+        let error='';try{await this.store.save(job.source);await this.prepare(await this.store.read('entries',job.id));}catch(e){error=String(e?.message||'原图保存失败').slice(0,250);}
         await this.serial(async()=>{
           const current=await this.store.read('jobs',job.id);
           // A new media descriptor may have replaced this job while it was saving.

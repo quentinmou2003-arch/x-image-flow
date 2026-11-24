@@ -61,7 +61,7 @@
       }
       photos.push({url:im.url,hash:asset.hash,alt:im.alt,copiedAt:0});
     }
-    const entry={id:source.id,href:source.href,author:source.author,authorURL:source.authorURL,description:source.description||old?.description||'',postedAt:source.postedAt||old?.postedAt||'',photos,tags:old?.tags||[],state:photos.length>(old?.photos.length||0)?'saved':old?.state||'saved',createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()};
+    const entry={id:source.id,href:source.href,author:source.author,authorURL:source.authorURL,description:source.description||old?.description||'',postedAt:source.postedAt||old?.postedAt||'',photos,tags:old?.tags||[],archiveChoice:old?.archiveChoice||'auto',presentation:old?.presentation,state:photos.length>(old?.photos.length||0)?'saved':old?.state||'saved',createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()};
     await write(['entries','assets','aliases'],tx=>{
       for(const a of additions)tx.objectStore('assets').put(a);
       for(const a of aliases)tx.objectStore('aliases').put(a);
@@ -72,12 +72,20 @@
   async function edit(id,patch) { return enqueue(async()=>{
     const entry=await read('entries',id);if(!entry)throw Error('这条收藏不存在');
     if(patch.tags!==undefined)entry.tags=tags(patch.tags);
+    if(patch.archiveChoice!==undefined){if(!['auto','album','horizontal','vertical','grid'].includes(patch.archiveChoice))throw Error('上传类型无效');if(patch.archiveChoice==='grid'&&entry.photos.length!==4)throw Error('四宫格需要四张图片');entry.archiveChoice=patch.archiveChoice;delete entry.presentation;}
     if(patch.state!==undefined) {
       if(!['saved','copied','sent'].includes(patch.state))throw Error('收图状态无效');
       entry.state=patch.state;if(patch.state==='saved')for(const p of entry.photos)p.copiedAt=0;
     }
     entry.updatedAt=Date.now();await write(['entries'],tx=>tx.objectStore('entries').put(entry));return entry;
   }); }
+  async function presentation(id,value,assets){return enqueue(async()=>{
+    if(!value||!Array.isArray(assets)||assets.length>4||assets.some(a=>a.mime!=='image/png'||!(a.blob instanceof Blob)||!a.blob.size||a.blob.size>64*1024*1024))throw Error('云端 PNG 格式或大小无效');
+    await write(['entries','assets'],tx=>{
+      const req=tx.objectStore('entries').get(id);
+      req.onsuccess=()=>{const entry=req.result;if(!entry||scope.XIFArchivePresentation.signature(entry)!==value.signature){tx.abort();return;}for(const asset of assets)tx.objectStore('assets').put(asset);entry.presentation=value;tx.objectStore('entries').put(entry);};
+    });
+  });}
   async function progress(urls) { return enqueue(async()=>{
     const set=new Set(urls.map(url=>scope.XIF.mediaURL(url))), entries=await all('entries'), changed=[];
     for(const e of entries) {let dirty=false;for(const p of e.photos)if(set.has(p.url)){p.copiedAt=Date.now();dirty=true;}
@@ -86,7 +94,8 @@
   }); }
   async function remove(id) { return enqueue(async()=>{
     const entries=await all('entries'), target=entries.find(e=>e.id===id);if(!target)return;
-    const used=new Set(entries.filter(e=>e.id!==id).flatMap(e=>e.photos.map(p=>p.hash))), orphan=new Set(target.photos.map(p=>p.hash).filter(h=>!used.has(h)));
+    const hashes=e=>[...e.photos,...(e.presentation?.photos||[])].map(p=>p.hash);
+    const used=new Set(entries.filter(e=>e.id!==id).flatMap(hashes)), orphan=new Set(hashes(target).filter(h=>!used.has(h)));
     const aliases=await all('aliases');
     await write(['entries','assets','aliases'],tx=>{
       tx.objectStore('entries').delete(id);
@@ -101,6 +110,6 @@
   async function putJob(job) { return enqueue(()=>write(['jobs'],tx=>tx.objectStore('jobs').put(job))); }
   async function putDrive(store,value){if(!['driveJobs','driveRecords'].includes(store))throw Error('云盘记录无效');return enqueue(()=>write([store],tx=>tx.objectStore(store).put(value)));}
   async function driveJobs(account,states){const db=await database(),index=db.transaction('driveJobs').objectStore('driveJobs').index('accountState');return (await Promise.all(states.map(state=>request(index.getAll([account,state]))))).flat();}
-  scope.XIFLibrary={database,read,all,save,edit,progress,remove,summary,tags,input,putJob,assetStats,jobs,putDrive,driveJobs};
+  scope.XIFLibrary={database,read,all,save,edit,presentation,progress,remove,summary,tags,input,putJob,assetStats,jobs,putDrive,driveJobs};
   if(typeof module!=='undefined')module.exports={tags,input};
 })(globalThis);

@@ -1,9 +1,9 @@
 'use strict';
-importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js', 'drive-browser.js');
-const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,changed:type=>libraryChanged(type)});
+importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-presentation.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js', 'drive-browser.js');
+const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,prepare:XIFArchivePresentation.prepare,changed:type=>libraryChanged(type)});
 const driveBrowser=new XIFDriveBrowser.DriveBrowser(driveSync);
 const runDriveSync=()=>driveSync.pump().catch(error=>console.error('云同步暂停：',error.message));
-const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,changed:libraryChanged});
+const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,prepare:XIFArchivePresentation.prepare,changed:libraryChanged});
 const runArchiveQueue=()=>archiveQueue.pump().catch(error=>console.error('收图队列暂停：',error.message));
 chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='xif-archive-queue'){runArchiveQueue();runDriveSync();}});
 chrome.alarms.create('xif-archive-queue',{periodInMinutes:1});
@@ -42,14 +42,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       if (msg.action === 'library-queue-status') return {ok:true,jobs:(await archiveQueue.list()).filter(j=>j.state!=='saved')};
       if (msg.action === 'library-enqueue') { const job=await archiveQueue.add(msg.entry); runArchiveQueue(); return {ok:true,id:job.id,state:job.state}; }
       if (msg.action === 'library-queue-retry') { if(!/^\d{1,30}$/.test(msg.id))throw Error('队列编号无效');await archiveQueue.retry(msg.id);runArchiveQueue();return {ok:true}; }
+      if (msg.action === 'library-presentation' && ownLibrary) {await XIFLibrary.edit(msg.id,{archiveChoice:msg.choice});await archiveQueue.rebuild(msg.id);runArchiveQueue();return {ok:true};}
       if (msg.action === 'library-save') { const entry=await XIFLibrary.save(msg.entry); await libraryChanged('library-change',entry.id); return {ok:true,id:entry.id}; }
       if (msg.action === 'library-progress') { if(!Array.isArray(msg.urls)||msg.urls.length>80)throw Error('复制记录无效');await XIFLibrary.progress(msg.urls);await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-edit' && ownLibrary) { await XIFLibrary.edit(msg.id,msg.patch||{}); await libraryChanged('library-change',msg.id);return {ok:true}; }
       if (msg.action === 'library-delete' && ownLibrary) { await XIFLibrary.remove(msg.id); await libraryChanged();return {ok:true}; }
       if (msg.action === 'library-local-prepare' && ownLibrary) {
         const entry=await XIFLibrary.read('entries',msg.id);if(!entry)throw Error('收藏不存在');
-        return XIFNativeCopy.prepare(sender.tab.id,entry.photos.map(p=>p.hash),undefined,false,async i=>{
-          const asset=await XIFLibrary.read('assets',entry.photos[i].hash);if(!asset)throw Error('原图文件缺失');
+        const photos=msg.display&&XIFArchivePresentation.valid(entry)?entry.presentation.photos:entry.photos;
+        return XIFNativeCopy.prepare(sender.tab.id,photos.map(p=>p.hash),undefined,false,async i=>{
+          const asset=await XIFLibrary.read('assets',photos[i].hash);if(!asset)throw Error('原图文件缺失');
           const bytes=new Uint8Array(await asset.blob.arrayBuffer()),parts=[];
           for(let offset=0;offset<bytes.length;offset+=32768)parts.push(String.fromCharCode(...bytes.subarray(offset,offset+32768)));
           return XIFOffscreen.request({action:'local-copy',data:'data:'+asset.mime+';base64,'+btoa(parts.join(''))});

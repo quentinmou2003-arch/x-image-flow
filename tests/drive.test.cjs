@@ -28,8 +28,8 @@ function service(){
    return session.done?json(files.get(session.metadata.id)):new Response(null,{status:308,headers:{Range:'bytes=0-'+(session.offset-1)}});
   }
   if(u.pathname.endsWith('/files')&&method==='POST'){const value=JSON.parse(o.body);files.set(value.id,value);return json(value);}
-  if(u.pathname.endsWith('/files')){const query=u.searchParams.get('q')||'',hash=query.match(/key='xifHash' and value='([a-f0-9]+)'/)?.[1];return json({files:[...files.values()].filter(f=>hash?f.appProperties?.xifHash===hash:f.mimeType==='application/vnd.google-apps.folder')});}
-  const id=u.pathname.split('/').pop();return files.has(id)?json(files.get(id)):json({},404);
+  if(u.pathname.endsWith('/files')){const query=u.searchParams.get('q')||'',hash=query.match(/key='xifHash' and value='([a-f0-9]+)'/)?.[1],kind=query.match(/key='xifKind' and value='([^']+)'/)?.[1],parent=query.match(/'([\w-]+)' in parents/)?.[1];return json({files:[...files.values()].filter(f=>(!parent||f.parents?.includes(parent))&&(hash?f.appProperties?.xifHash===hash:f.mimeType==='application/vnd.google-apps.folder')&&(!kind||f.appProperties?.xifKind===kind))});}
+  const id=u.pathname.split('/').pop();if(method==='PATCH'&&files.has(id)){const file=files.get(id);file.parents=(file.parents||[]).filter(p=>p!==u.searchParams.get('removeParents'));if(u.searchParams.get('addParents'))file.parents.push(u.searchParams.get('addParents'));return json(file);}return files.has(id)?json(files.get(id)):json({},404);
  };
  return {files,sessions,calls,fetcher,get uploads(){return uploads;},loseAt:n=>lostAt=n,account:value=>account=value};
 }
@@ -80,4 +80,44 @@ test('new cloud originals use author, Beijing post time and description while re
  for(const [i,p]of metadata.photos.entries()){const file=api.files.get(p.fileId);assert.equal(file.name,'Artist_2026-11-06_02-03-04_雨夜街景_100_图0'+(i+1)+'.jpg');assert.deepEqual(new Uint8Array(await file.blob.arrayBuffer()),new Uint8Array(await s.maps.assets.get(p.hash).blob.arrayBuffer()));}
  const later={...entry,id:'101',author:'Other',href:'https://x.com/other/status/101'};s.maps.entries.set('101',later);await sync.enqueue('101');await sync.pump();assert.equal(api.uploads,6,'shared originals keep their first file/name, only a new source manifest uploads');assert.equal(s.interactive,1,'new collections reuse existing authorization');
  const resumed=new DriveSync({...s,fetcher:api.fetcher});await resumed.pump();assert.equal(s.interactive,1,'restart does not open another login');
+});
+
+async function pngPresentation(s,kind='slice'){
+ const entry=s.maps.entries.get('100'),photos=[];
+ for(let i=0;i<(kind==='slice'?1:4);i++){const blob=new Blob(['PNG DISPLAY '+i],{type:'image/png'}),hash=await digest(blob);s.maps.assets.set(hash,{hash,blob,mime:blob.type,bytes:blob.size});photos.push({hash,url:entry.photos[i].url,alt:'display',sourceIndices:kind==='slice'?[0,1,2,3]:[i]});}
+ entry.presentation={format:'xif-cloud-png-v1',kind,signature:'test',mode:kind==='slice'?'horizontal':null,photos};return entry;
+}
+test('four slices upload one PNG master and keep four byte-exact originals in a backup folder',async()=>{
+ const s=state(),api=service();await seed(s);await pngPresentation(s);const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();await sync.pump();
+ const job=[...s.maps.driveJobs.values()][0];assert.equal(job.state,'synced');assert.equal(job.done,5);
+ const metadata=JSON.parse(await api.files.get(job.manifestId).blob.text());assert.equal(metadata.cloudPhotos.length,1);assert.equal(metadata.photos.length,4);
+ const root=s.local[KEY].root.fileId,backup=s.local[KEY].root.backups.fileId,main=api.files.get(metadata.cloudPhotos[0].fileId);
+ assert(main.name.endsWith('_拼接.png'));assert.deepEqual(main.parents,[root]);
+ for(const photo of metadata.photos){const file=api.files.get(photo.fileId);assert.deepEqual(file.parents,[backup]);assert.deepEqual(new Uint8Array(await file.blob.arrayBuffer()),new Uint8Array(await s.maps.assets.get(photo.hash).blob.arrayBuffer()));}
+ assert.equal([...api.files.values()].filter(f=>f.parents?.includes(root)&&f.size).length,2,'master PNG and source manifest only');
+ const uploads=api.uploads;await sync.enqueue('100');await sync.pump();assert.equal(api.uploads,uploads,'no repeated conversion/upload on retry');
+});
+test('ordinary albums keep four separate PNGs, never one flattened collage',async()=>{
+ const s=state(),api=service();await seed(s);await pngPresentation(s,'album');const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();await sync.pump();
+ const job=[...s.maps.driveJobs.values()][0],metadata=JSON.parse(await api.files.get(job.manifestId).blob.text());assert.equal(metadata.cloudPhotos.length,4);
+ assert(metadata.cloudPhotos.every((p,i)=>api.files.get(p.fileId).name.endsWith('_图0'+(i+1)+'.png')));
+ assert(metadata.cloudPhotos.every(p=>api.files.get(p.fileId).parents.includes(s.local[KEY].root.fileId)));assert.equal(metadata.photos.length,4);
+});
+test('old slice-only uploads are repaired without deleting or reuploading their original files',async()=>{
+ const s=state(),api=service();await seed(s);const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();await sync.pump();
+ const oldJob=[...s.maps.driveJobs.values()][0],oldPhotos=JSON.parse(await api.files.get(oldJob.manifestId).blob.text()).photos,oldIds=oldPhotos.map(p=>p.fileId);
+ await pngPresentation(s);await sync.enqueue('100');await sync.pump();
+ const job=[...s.maps.driveJobs.values()].find(j=>j.state==='synced');assert.equal(s.maps.driveJobs.get(oldJob.id).state,'superseded');
+ const metadata=JSON.parse(await api.files.get(job.manifestId).blob.text());assert.deepEqual(metadata.photos.map(p=>p.fileId),oldIds);assert.equal(api.uploads,7,'five original uploads plus new master and source manifest');
+ assert(oldIds.every(id=>api.files.get(id).parents.includes(s.local[KEY].root.backups.fileId)));assert(!api.calls.some(c=>c.method==='DELETE'));
+});
+test('a stale pending raw upload is superseded before any original leaks into the main gallery',async()=>{
+ const s=state(),api=service();await seed(s);const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();const oldId=[...s.maps.driveJobs.keys()][0];
+ await pngPresentation(s);await sync.pump();assert.equal(s.maps.driveJobs.get(oldId).state,'superseded');
+ assert.equal([...s.maps.driveJobs.values()].filter(j=>j.state==='synced').length,1);assert.equal(api.uploads,6);
+});
+test('a lost stitched-PNG receipt resumes by ID and never reports partial backup as synchronized',async()=>{
+ const s=state(),api=service();await seed(s);await pngPresentation(s);const sync=new DriveSync({...s,fetcher:api.fetcher});await sync.connect();api.loseAt(1);await sync.pump();
+ const job=[...s.maps.driveJobs.values()][0];assert.equal(job.state,'pending');assert.equal(api.uploads,1);
+ const resumed=new DriveSync({...s,fetcher:api.fetcher});await resumed.retry(job.id);await resumed.pump();assert.equal(s.maps.driveJobs.get(job.id).state,'synced');assert.equal(api.uploads,6);
 });

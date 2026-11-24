@@ -29,3 +29,11 @@ test('queue resumes safely when the files were committed just before the worker 
  const f=fixture(),q=f.queue();await q.add(source());await q.pump();f.jobs.get('100').state='saving';
  const restarted=f.queue();await restarted.pump();assert.equal(f.jobs.get('100').state,'saved');assert.equal(f.entries.size,1);
 });
+
+test('like archive cannot announce ready or upload originals before PNG preparation completes',async()=>{
+ const f=fixture(async value=>f.entries.set(value.id,{...value,photos:value.images}));let broken=true,cloudNotifications=0;
+ const q=new Queue({store:f.store,now:()=>f.clock,prepare:async entry=>{assert(entry.photos.length===4);if(broken)throw Error('PNG preparation failed');},changed:async(type)=>{if(type==='library-change')cloudNotifications++;}});
+ await q.add(source());await q.pump();assert.equal(f.entries.size,1,'raw originals survive PNG failure');assert.equal(f.jobs.get('100').state,'pending');assert.equal(cloudNotifications,0);
+ broken=false;await q.retry('100');await q.pump();assert.equal(f.jobs.get('100').state,'saved');assert.equal(cloudNotifications,1);
+ Object.assign(f.entries.get('100'),source());await q.rebuild('100');assert.equal(f.jobs.get('100').state,'pending');await q.pump();assert.equal(f.jobs.get('100').state,'saved');
+});

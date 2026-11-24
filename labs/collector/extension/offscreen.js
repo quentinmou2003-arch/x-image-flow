@@ -66,9 +66,10 @@ function registration(images, mode, key) {
   if (plans.size >= 8) plans.delete(plans.keys().next().value);
   plans.set(key, seams); return seams;
 }
-async function render(urls, mode, preview, auto, overrides) {
+async function render(urls, mode, preview, auto, overrides, local) {
   // Stitch previews and exports share original pixels, integer placement and registration.
-  return withImages(urls, 'orig', async images => {
+  const using=local?async(_urls,_size,fn)=>fn(local.images):withImages;
+  return using(urls, 'orig', async images => {
     if (images.reduce((n, im) => n + im.width * im.height, 0) > 100000000) throw Error('图片总尺寸过大');
     let layout = images.length === 1 ? {width: images[0].width, height: images[0].height, cells: [{x: 0, y: 0}], seams: []} : XIF.geometry(images, mode);
     if (images.length > 1 && ['horizontal', 'vertical'].includes(mode)) {
@@ -91,16 +92,43 @@ async function render(urls, mode, preview, auto, overrides) {
       output.getContext('2d').drawImage(canvas, 0, 0, output.width, output.height);
     }
     let png;
-    if (images.length === 1 && !preview) { const original = await fetchImage(urls[0]); png = original.type === 'image/png' ? original : await output.convertToBlob({type: 'image/png'}); }
+    if (images.length === 1 && !preview) { const original = local?local.assets[0].blob:await fetchImage(urls[0]); png = original.type === 'image/png' ? original : await output.convertToBlob({type: 'image/png'}); }
     else png = await output.convertToBlob({type: 'image/png'});
     return {png, width: layout.width, height: layout.height, seams: layout.seams || []};
   });
 }
 function dataURL(blob) { return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(Error('预览读取失败')); r.readAsDataURL(blob); }); }
+async function prepareArchive(id){
+  if(!/^\d{1,30}$/.test(id))throw Error('收藏编号无效');
+  const entry=await XIFLibrary.read('entries',id);if(!entry?.photos?.length)throw Error('原图还未保存完整');
+  if(XIFArchivePresentation.valid(entry))return {ok:true,kind:entry.presentation.kind};
+  const assets=await Promise.all(entry.photos.map(p=>XIFLibrary.read('assets',p.hash)));
+  if(assets.some(a=>!a?.blob))throw Error('本机原图缺失，无法准备云端 PNG');
+  const images=[];
+  try{
+    for(const asset of assets)images.push(await createImageBitmap(asset.blob));
+    if(images.some(im=>im.width>32767||im.height>32767)||images.reduce((n,im)=>n+im.width*im.height,0)>100000000)throw Error('图片总尺寸过大，原图已保留，请分开保存');
+    const suggestion=images.length>1&&!assets.some(a=>a.mime==='image/gif')?XIF.detect(images.map(im=>pixels(im,Math.min(1,192/Math.max(im.width,im.height))))):null;
+    const plan=XIFArchivePresentation.plan(entry,suggestion),outputs=[],photos=[];
+    const groups=plan.kind==='slice'?[plan.order]:plan.order.map(i=>[i]);
+    let bytes=0,seams=[];
+    for(const indices of groups){
+      const urls=indices.map(i=>entry.photos[i].url),local={images:indices.map(i=>images[i]),assets:indices.map(i=>assets[i])};
+      const result=await render(urls,plan.mode,false,true,undefined,local);
+      bytes+=result.png.size;if(result.png.size>64*1024*1024||bytes>160*1024*1024)throw Error('云端 PNG 过大，原文件已保留，请分开保存');
+      const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await result.png.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');
+      outputs.push({hash,blob:result.png,mime:'image/png',bytes:result.png.size});
+      photos.push({hash,url:urls[0],alt:plan.kind==='slice'?'拼接整图':entry.photos[indices[0]].alt,width:result.width,height:result.height,sourceIndices:indices});seams=result.seams;
+    }
+    await XIFLibrary.presentation(id,{format:XIFArchivePresentation.FORMAT,signature:XIFArchivePresentation.signature(entry),kind:plan.kind,mode:plan.mode||null,order:plan.order,seams,photos},outputs);
+    return {ok:true,kind:plan.kind,count:photos.length};
+  }finally{images.forEach(im=>im.close());}
+}
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.target !== 'offscreen' || sender.id !== chrome.runtime.id) return;
   if (msg.action === 'ready') { reply({ok: true, ready: true}); return; }
   const work = async () => {
+    if(msg.action==='archive-prepare')return prepareArchive(msg.id);
     if (msg.action === 'gif') { const r = await XIFGIF.convert(msg.url); return {ok: true, data: await dataURL(r.blob), width: r.width, height: r.height, original: r.original}; }
     if (msg.action === 'revoke') { URL.revokeObjectURL(msg.url); return {ok: true}; }
     if(msg.action==='local-copy'||msg.action==='local-preview') {
@@ -133,6 +161,6 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return {ok: true, url, width: result.width, height: result.height};
   };
   // Preserve click order and avoid simultaneous full-size export canvases.
-  const task = ['copy', 'download', 'local-copy', 'local-preview'].includes(msg.action) ? (exportQueue = exportQueue.then(work, work)) : work();
+  const task = ['copy', 'download', 'local-copy', 'local-preview', 'archive-prepare'].includes(msg.action) ? (exportQueue = exportQueue.then(work, work)) : work();
   task.then(reply, error => reply({ok: false, error: error.message})); return true;
 });

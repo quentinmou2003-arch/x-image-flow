@@ -1,7 +1,7 @@
 /* Drive v3 client: credentials stay in the worker; upload IDs are saved before writes. */
 (function(scope){
   'use strict';
-  const BASE='https://www.googleapis.com/drive/v3/',FIELDS='id,size,sha256Checksum,trashed,mimeType,appProperties';
+  const BASE='https://www.googleapis.com/drive/v3/',FIELDS='id,size,sha256Checksum,trashed,mimeType,appProperties,parents';
   class DriveError extends Error{constructor(message,code='retry'){super(message);this.code=code;}}
   const id=value=>{if(typeof value!=='string'||!/^[\w-]{1,200}$/.test(value))throw new DriveError('云端文件编号无效','invalid');return value;};
   function allowed(value){const url=new URL(value);if(url.origin!=='https://www.googleapis.com'||!/^\/(?:upload\/)?drive\/v3\//.test(url.pathname)||url.username||url.password)throw new DriveError('拒绝异常的云端上传地址','invalid');return url.href;}
@@ -35,6 +35,24 @@
       if(old){if(old.trashed||old.mimeType!=='application/vnd.google-apps.folder'||old.appProperties?.xifKind!=='root-v1')throw new DriveError('拾图云端目录已删除或改变，请恢复该目录后重试','folder');return ref.fileId;}
       await this.json(BASE+'files?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ref.fileId,name:'拾图 · 原图库',mimeType:'application/vnd.google-apps.folder',appProperties:{xifKind:'root-v1'}})},[409]);
       const created=await this.file(ref.fileId);if(!created||created.trashed||created.mimeType!=='application/vnd.google-apps.folder')throw new DriveError('云端目录尚未确认');return ref.fileId;
+    }
+    async backupFolder(parent,ref,persist){
+      if(!ref.fileId){
+        const q="trashed = false and '"+id(parent)+"' in parents and mimeType = 'application/vnd.google-apps.folder' and appProperties has { key='xifKind' and value='source-backup-v1' }";
+        const found=await this.json(BASE+'files?spaces=drive&pageSize=100&fields=files(id)&q='+encodeURIComponent(q));
+        ref.fileId=found.files?.[0]?.id||await this.generateId();await persist(ref);
+      }
+      let file=await this.file(ref.fileId);
+      if(!file){await this.json(BASE+'files?fields=id',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:ref.fileId,name:'原文件备份（含切片）',parents:[id(parent)],mimeType:'application/vnd.google-apps.folder',appProperties:{xifKind:'source-backup-v1'}})},[409]);file=await this.file(ref.fileId);}
+      if(!file||file.trashed||file.mimeType!=='application/vnd.google-apps.folder'||file.appProperties?.xifKind!=='source-backup-v1'||!file.parents?.includes(parent))throw new DriveError('原文件备份目录已改变，请恢复后重试','folder');
+      return ref.fileId;
+    }
+    async relocate(fileId,from,to,blob,hash){
+      const file=await this.file(fileId);if(!this.verify(file,blob,hash))throw new DriveError('原文件尚未确认，不能归入备份','integrity');
+      if(file.parents?.includes(to))return;
+      if(!file.parents?.includes(from))throw new DriveError('原文件已被移到其他目录，未改变其位置','folder');
+      await this.json(BASE+'files/'+id(fileId)+'?addParents='+id(to)+'&removeParents='+id(from)+'&fields='+encodeURIComponent(FIELDS),{method:'PATCH',headers:{'Content-Type':'application/json'},body:'{}'});
+      const updated=await this.file(fileId);if(!this.verify(updated,blob,hash)||!updated.parents?.includes(to)||updated.parents.includes(from))throw new DriveError('文件归档位置尚未确认，请重试');
     }
     verify(file,blob,hash){
       if(!file||file.trashed)return false;
