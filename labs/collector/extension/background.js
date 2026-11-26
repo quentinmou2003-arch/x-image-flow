@@ -75,9 +75,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     if (msg.action === 'batch-abort') return XIFNativeCopy.abort(sender.tab.id, msg.jobId);
     if (msg.action === 'gif-prepare') return XIFNativeCopy.prepareGIF(sender.tab.id, XIFMotion.url(msg.url));
     if (msg.action === 'batch-prepare') {
-      if (!Array.isArray(msg.urls) || msg.urls.length < 2 || msg.urls.length > 4) throw Error('整组图片数量无效');
+      if (!Array.isArray(msg.urls) || msg.urls.length < 2 || msg.urls.length > 8) throw Error('整组图片数量无效');
       const urls = msg.urls.map(url => XIF.mediaURL(url));
-      if (msg.mode !== undefined && !['horizontal', 'vertical', 'grid'].includes(msg.mode)) throw Error('拼接布局无效');
+      if (msg.mode !== undefined && !['horizontal', 'vertical', 'grid', 'grid3x2', 'grid2x3'].includes(msg.mode)) throw Error('拼接布局无效');
       if(msg.names!==undefined&&(!Array.isArray(msg.names)||msg.names.length!==(msg.mode?1:urls.length)||msg.names.some(n=>typeof n!=='string'||n.length>1000)))throw Error('文件名无效');
       return XIFNativeCopy.prepare(sender.tab.id, urls, msg.mode, msg.blend,undefined,false,msg.names?.map(n=>XIF.filenamePart(n)));
     }
@@ -86,9 +86,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     }
     if (!['copy', 'download', 'preview', 'analyze', 'prefetch'].includes(msg.action)) throw Error('未知操作');
     const values = msg.urls || [msg.url];
-    if (!Array.isArray(values) || values.length < 1 || values.length > 4) throw Error('图片数量无效');
+    if (!Array.isArray(values) || values.length < 1 || values.length > 8) throw Error('图片数量无效');
     const urls = values.map(url => XIF.mediaURL(url));
-    if (urls.length > 1 && ['copy', 'download', 'preview'].includes(msg.action) && !['horizontal', 'vertical', 'grid'].includes(msg.mode)) throw Error('拼接布局无效');
+    if (urls.length > 1 && ['copy', 'download', 'preview'].includes(msg.action) && !['horizontal', 'vertical', 'grid', 'grid3x2', 'grid2x3'].includes(msg.mode)) throw Error('拼接布局无效');
     const result = await XIFOffscreen.request({action: msg.action, urls, mode: msg.mode, blend: msg.blend, seams: msg.seams});
     if (!result?.ok) throw Error(result?.error || '图片处理失败');
     if (msg.action === 'download') {

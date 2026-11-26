@@ -70,7 +70,7 @@
             job.done=0;
             for(const [i,photo]of mains.entries()){
               await client.guard();const asset=await this.store.read('assets',photo.hash);if(!asset||asset.mime!=='image/png')throw new scope.XIFDrive.DriveError('云端 PNG 主图缺失，请重新处理收藏','missing');
-              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1,job.data.presentation.kind==='slice')+'.png');
+              const fileId=await this.upload(client,account,root.fileId,asset.blob,asset.hash,scope.XIF.imageName(job.data,i+1,photo.sourceIndices?.length>1)+'.png');
               const remote=await client.file(fileId);
               if(root.backups?.fileId&&remote.parents?.includes(root.backups.fileId))await client.relocate(fileId,root.backups.fileId,root.fileId,asset.blob,asset.hash);
               cloudPhotos.push({...photo,fileId});job.done=i+1;await this.store.putDrive('driveJobs',{...job,state:'uploading',attempts:job.attempts+1});await this.notify();

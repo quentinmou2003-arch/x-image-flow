@@ -15,7 +15,7 @@
     } catch { return null; }
   }
   function geometry(sizes, mode) {
-    if (sizes.length < 2 || sizes.length > 4) throw Error('拼接支持 2–4 张图片');
+    if (sizes.length < 2 || sizes.length > 8) throw Error('拼接支持 2–8 张图片');
     if (sizes.some(s => !Number.isInteger(s.width) || !Number.isInteger(s.height) || s.width < 1 || s.height < 1)) throw Error('图片尺寸无效');
     let width, height, cells;
     if (mode === 'horizontal') {
@@ -24,11 +24,12 @@
     } else if (mode === 'vertical') {
       width = Math.max(...sizes.map(s => s.width)); height = sizes.reduce((v, s) => v + s.height, 0);
       let y = 0; cells = sizes.map(s => { const c = {x: 0, y, width: s.width, height: s.height}; y += s.height; return c; });
-    } else if (mode === 'grid' && sizes.length === 4) {
-      const left = Math.max(sizes[0].width, sizes[2].width), right = Math.max(sizes[1].width, sizes[3].width);
-      const top = Math.max(sizes[0].height, sizes[1].height), bottom = Math.max(sizes[2].height, sizes[3].height);
-      width = left + right; height = top + bottom;
-      cells = sizes.map((s, i) => ({x: i % 2 ? left : 0, y: i > 1 ? top : 0, width: s.width, height: s.height}));
+    } else if ((mode === 'grid' && sizes.length === 4) || (['grid3x2','grid2x3'].includes(mode) && sizes.length === 6)) {
+      const cols=mode==='grid3x2'?3:2, rows=sizes.length/cols;
+      const widths=Array.from({length:cols},(_,c)=>Math.max(...sizes.filter((_,i)=>i%cols===c).map(s=>s.width)));
+      const heights=Array.from({length:rows},(_,row)=>Math.max(...sizes.slice(row*cols,(row+1)*cols).map(s=>s.height)));
+      width=widths.reduce((a,b)=>a+b,0);height=heights.reduce((a,b)=>a+b,0);
+      cells=sizes.map((s,i)=>({x:widths.slice(0,i%cols).reduce((a,b)=>a+b,0),y:heights.slice(0,Math.floor(i/cols)).reduce((a,b)=>a+b,0),width:s.width,height:s.height}));
     } else throw Error('不支持的拼接布局');
     if (width > 32767 || height > 32767 || width * height > 80000000) throw Error('拼接尺寸过大，请减少图片数量');
     return {width, height, cells};
@@ -55,19 +56,26 @@
     return {cost: error / (n * 3 * 255) + Math.abs(lengthA - lengthB) / Math.max(lengthA, lengthB) * .2, energy: energy / (n * 3 * 255)};
   }
   function detect(images) {
-    if (images.length < 2 || images.length > 4) throw Error('检测支持 2–4 张图片');
+    if (images.length < 2 || images.length > 8) throw Error('检测支持 2–8 张图片');
     const candidates = [], memo = new Map();
     function edge(a, b, horizontal) {
       const key = `${a}:${b}:${horizontal}`;
       if (!memo.has(key)) memo.set(key, seam(images[a], images[b], horizontal)); return memo.get(key);
     }
-    for (const order of permutations(images.map((_, i) => i))) {
-      for (const mode of ['horizontal', 'vertical', ...(images.length === 4 ? ['grid'] : [])]) {
-        const edges = mode === 'grid'
-          ? [edge(order[0], order[1], true), edge(order[2], order[3], true), edge(order[0], order[2], false), edge(order[1], order[3], false)]
-          : order.slice(1).map((id, i) => edge(order[i], id, mode === 'horizontal'));
-        candidates.push({mode, order, cost: edges.reduce((v, e) => v + e.cost, 0) / edges.length, energy: edges.reduce((v, e) => v + e.energy, 0) / edges.length});
-      }
+    // Keep two best paths per subset/end: 8 photos need no factorial search for strips.
+    const n=images.length, full=(1<<n)-1;
+    for(const mode of ['horizontal','vertical']) {
+      const dp=new Map();
+      const keep=(key,value)=>{const rows=dp.get(key)||[];rows.push(value);rows.sort((a,b)=>a.cost-b.cost);dp.set(key,rows.slice(0,2));};
+      for(let i=0;i<n;i++)keep(((1<<i)*n)+i,{order:[i],cost:0,energy:0});
+      for(let mask=1;mask<=full;mask++)for(let last=0;last<n;last++)for(const path of dp.get(mask*n+last)||[])for(let next=0;next<n;next++)if(!(mask&(1<<next))){const e=edge(last,next,mode==='horizontal');keep((mask|(1<<next))*n+next,{order:[...path.order,next],cost:path.cost+e.cost,energy:path.energy+e.energy});}
+      for(let last=0;last<n;last++)for(const p of dp.get(full*n+last)||[])candidates.push({...p,mode,cost:p.cost/(n-1),energy:p.energy/(n-1)});
+    }
+    const grids=n===4?['grid']:n===6?['grid3x2','grid2x3']:[];
+    if(grids.length)for(const order of permutations(images.map((_,i)=>i)))for(const mode of grids){
+      const cols=mode==='grid3x2'?3:2,edges=[];
+      for(let i=0;i<n;i++){if(i%cols<cols-1)edges.push(edge(order[i],order[i+1],true));if(i+cols<n)edges.push(edge(order[i],order[i+cols],false));}
+      candidates.push({mode,order,cost:edges.reduce((v,e)=>v+e.cost,0)/edges.length,energy:edges.reduce((v,e)=>v+e.energy,0)/edges.length});
     }
     candidates.sort((a, b) => a.cost - b.cost);
     const best = candidates[0], gap = candidates[1].cost - best.cost;

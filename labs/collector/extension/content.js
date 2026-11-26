@@ -15,15 +15,15 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.16</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.17</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
-      <div class="help hidden">复制 PNG → 在电脑 QQ 的手机会话中 Ctrl+V 发送。需要保留文件：保存 PNG 后作为文件发送。<br>同一推文的图片叠成卡牌，左右切换；点击「拼接」合成整张图。左上角勾选支持跨推文拼接 2–4 张。</div>
+      <div class="help hidden">复制 PNG → 在电脑 QQ 的手机会话中 Ctrl+V 发送。需要保留文件：保存 PNG 后作为文件发送。<br>同一推文的图片叠成卡牌，左右切换；点击「拼接」合成整张图。左上角勾选支持跨推文拼接 2–8 张。</div>
       <main class="scroll"><div class="intro"><div><b>让美图，连成一片。</b><span class="count">0 组 · 0 张</span></div><span class="hint">轻量图片预览 · 视频点击播放 · 一键收藏</span></div><div class="grid"></div><div class="empty"><b>图片与视频，都在这里。</b><span>打开拾图会自动读取内容，接近底部时继续加载。<br>敏感内容需返回 X 手动展开。</span></div><button class="more">已开启自动续载 · 立即加载</button><div class="foot">视频先加载封面，点击后低清播放 · 图片导出保留原尺寸</div></main>
     </section>
     <section class="viewer hidden" role="dialog" aria-modal="true" aria-label="图片预览"><div class="modalhead"><b class="viewtitle">图片预览</b><span class="viewcount muted"></span><button class="dismiss">关闭 ×</button></div><div class="viewstage"><button class="viewprev" aria-label="上一张">‹</button><img alt="图片放大预览"><button class="viewnext" aria-label="下一张">›</button></div><div class="thumbs"></div><div class="viewfoot"><button class="viewcopy primary">复制 PNG</button><button class="viewsave">保存 PNG</button><button class="viewstitch">拼接这组</button></div></section>
-    <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
+    <section class="stitcher hidden" role="dialog" aria-modal="true" aria-label="图片拼接"><div class="modalhead"><b>图片拼接</b><span class="muted">拼回完整画面</span><button class="dismiss">关闭 ×</button></div><div class="stitchbody"><aside class="stitchside"><h3>拼接方向</h3><div class="modegroup"><button data-mode="horizontal" class="active">横向</button><button data-mode="vertical">纵向</button><button data-mode="grid">四宫格</button><button data-mode="grid3x2">六宫格 · 3列2行</button><button data-mode="grid2x3">六宫格 · 2列3行</button></div><label class="blend"><input type="checkbox" checked> 自动匹配重叠与偏移</label><h3>图片顺序</h3><div class="order"></div><p class="detectnote">正在比较图片边缘…</p><button class="redetect">重新智能排序</button><h3>接缝微调 · 原图像素</h3><div class="seamcontrols"></div><p class="alignmentnote"></p><p class="limitnote">重叠可去掉重复部分；横拼偏移调整上下，竖拼偏移调整左右。正数向下／向右。原切片若缺失内容，拼接无法还原；不会用模糊掩盖断线。</p></aside><div class="stitchstage"><div class="canvaswrap"><img class="stitched hidden" alt="拼接预览"><span class="previewstatus">准备预览…</span></div><div class="stitchfoot"><small>PNG · 原尺寸 · 无额外有损压缩</small><button class="stitchcopy primary" disabled>复制拼接 PNG</button><button class="stitchsave" disabled>保存拼接 PNG</button></div></div></div></section>
     <section class="videoviewer hidden" role="dialog" aria-modal="true" aria-label="视频播放器"><div class="modalhead"><b class="videotitle">视频预览</b><select class="videoquality" aria-label="视频清晰度"></select><button class="dismiss">关闭 ×</button></div><div class="videostage"><video class="player" controls playsinline preload="none"></video><p class="videostatus" role="status">准备播放…</p></div><div class="viewfoot"><span class="muted">默认最低码率，清晰度可切换</span><button class="videogifcopy primary hidden">复制 GIF</button><a class="videoorigin" target="_blank" rel="noopener noreferrer">打开原推文 ↗</a></div></section>
     <section class="hidemanager hidden" role="dialog" aria-modal="true" aria-label="管理拾图隐藏"><div class="modalhead"><b>已隐藏的推文</b><button class="dismiss">关闭 ×</button></div><p class="hide-note">这里管理拾图的本地隐藏。X 的屏蔽、隐藏账号与推荐偏好请在 X 管理。</p><div class="hidden-list"></div></section>
     <div class="native-shield hidden"></div><div class="menu-fallback hidden" role="menu" aria-label="推文更多选项"></div><div class="toast hidden" role="status" aria-live="polite"></div>`;
@@ -495,7 +495,7 @@
     g.badge = document.createElement('span'); g.badge.className = 'badge';
     g.prev = button('‹', 'arrow prev', '上一张'); g.next = button('›', 'arrow next', '下一张'); g.prev.onclick = () => turn(g, -1); g.next.onclick = () => turn(g, 1);
     g.dots = document.createElement('div'); g.dots.className = 'dots'; g.pick = button('+', 'pick', '选择当前图片，跨推文拼接');
-    g.pick.onclick = () => { const im = g.images[g.index]; if (im.type === 'video') return; if (selected.has(im.url)) selected.delete(im.url); else if (selected.size < 4) selected.set(im.url, {...im}); else { toast('最多选择 4 张图片'); return; } updateSelection(); };
+    g.pick.onclick = () => { const im = g.images[g.index]; if (im.type === 'video') return; if (selected.has(im.url)) selected.delete(im.url); else if (selected.size < 8) selected.set(im.url, {...im}); else { toast('最多选择 8 张图片'); return; } updateSelection(); };
     g.play = button('▶', 'video-play', '播放低清视频'); g.play.onclick = () => openVideo(g);
     media.append(photo, g.loader, g.badge, g.prev, g.next, g.dots, g.pick, g.play, g.longHint);
     const meta = document.createElement('div'); meta.className = 'meta'; const author = document.createElement('a'); author.className = 'author'; author.textContent = g.author; author.target = '_blank'; author.rel = 'noopener noreferrer'; if (g.authorURL) { author.href = g.authorURL; author.title = `打开 ${g.author} 的主页`; }
@@ -647,6 +647,7 @@
     }
   }
   function mediaKey(im) { return `${im.type === 'video' ? 'video' : 'image'}:${im.preview ? new URL(im.preview).pathname : im.key || im.order}`; }
+  const photoMetadata=new Map();
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.channel !== 'xif-video-v1' || !Array.isArray(event.data.records)) return;
     let adsChanged = false;
@@ -672,10 +673,13 @@
         for (const kind of ['like', 'bookmark']) if (!existing.busy && typeof states[kind] === 'boolean' && (!existing.apiState?.[kind] || Date.now() - existing.apiState[kind].time > 5000)) { existing[kind] = states[kind]; if (existing.apiState) delete existing.apiState[kind]; }
         updateSocial(existing);
       }
-      const media = record.media.slice(0, 4).filter(m => m && m.type === 'video').map((m, i) => ({type: 'video', key: String(m.key || i).slice(0, 80), gif: m.gif === true, poster: XIFVideo.posterURL(m.poster), variants: XIFVideo.variants(m.variants), width: Math.min(32767, Math.max(1, Number(m.width) || 16)), height: Math.min(32767, Math.max(1, Number(m.height) || 9)), order: Math.min(4, Math.max(1, Number(m.order) || i + 1))}));
+      const photos=record.media.slice(0,8).filter(m=>m?.type==='photo').flatMap(m=>{try{const url=XIF.mediaURL(m.url);return [{url,preview:XIF.mediaURL(url,'small'),alt:String(m.alt||'推文图片').slice(0,160),width:Math.min(32767,Math.max(1,Number(m.width)||600)),height:Math.min(32767,Math.max(1,Number(m.height)||800)),order:Math.min(8,Math.max(1,Number(m.order)||1))}];}catch{return [];}});
+      if(photos.length){photoMetadata.delete(record.id);photoMetadata.set(record.id,photos);}
+      const media = record.media.slice(0, 8).filter(m => m && m.type === 'video').map((m, i) => ({type: 'video', key: String(m.key || i).slice(0, 80), gif: m.gif === true, poster: XIFVideo.posterURL(m.poster), variants: XIFVideo.variants(m.variants), width: Math.min(32767, Math.max(1, Number(m.width) || 16)), height: Math.min(32767, Math.max(1, Number(m.height) || 9)), order: Math.min(8, Math.max(1, Number(m.order) || i + 1))}));
       if (media.length) { videoMetadata.delete(record.id); videoMetadata.set(record.id, media); }
     }
     if (adsChanged) refreshVisibility();
+    while(photoMetadata.size>600)photoMetadata.delete(photoMetadata.keys().next().value);
     while (videoMetadata.size > 600) videoMetadata.delete(videoMetadata.keys().next().value);
     while (tweetCounts.size > 600) tweetCounts.delete(tweetCounts.keys().next().value);
     while (tweetStates.size > 600) tweetStates.delete(tweetStates.keys().next().value);
@@ -732,12 +736,14 @@
         const photos = found.get(post.id).images;
         if (!photos.some(im => new URL(im.url).pathname === new URL(url).pathname)) photos.push({url, preview: XIF.mediaURL(url, 'small'), alt: img.alt || '推文图片', width: img.naturalWidth || 600, height: img.naturalHeight || 800, order: Number(photoLink?.href.match(/\/photo\/(\d+)/)?.[1] || photos.length + 1)});
       }
+      // Merge only the outer post and already attributed quoted posts.
+      for(const post of [mainPost,...[...found.values()].map(row=>row.post)])for(const photo of photoMetadata.get(post.id)||[]){if(!found.has(post.id))found.set(post.id,{post,images:[]});const list=found.get(post.id).images;const old=list.find(im=>im.url&&new URL(im.url).pathname===new URL(photo.url).pathname);if(old)Object.assign(old,{order:photo.order,width:photo.width,height:photo.height});else list.push({...photo});}
       collectVideos(article, mainPost, found);
       for (const {post, images} of found.values()) {
         if (!images.length) continue; images.sort((a, b) => a.order - b.order);
         let g = groups.get(post.id);
         if (!g) {
-          g = {id: post.id, href: post.href, images: images.slice(0, 4), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
+          g = {id: post.id, href: post.href, images: images.slice(0, 8), index: 0, author: post.id === mainPost.id ? (article.querySelector('[data-testid="User-Name"]')?.textContent?.split('·')[0]?.slice(0, 65) || 'X 图片') : quotedAuthor(article, post)};
           g.promoted = promotedPosts.has(post.id) || (post.id === mainPost.id && advertised); g.adOnly = advertised; g.sources = new Map([[mainPost.id, advertised]]);
           g.postedAt=pictureTime(article,post); g.description = pictureDescription(article, post, mainPost); g.authorURL = authorURL(article, post, mainPost);
           Object.assign(g, tweetStates.get(post.id) || {});
@@ -754,7 +760,8 @@
           if (post.id !== mainPost.id) { g.author = quotedAuthor(article, post); const author = g.card.querySelector('.author'); author.textContent = g.author; author.title = g.author; }
           for (const im of images) {
             const old = g.images.find(old => mediaKey(old) === mediaKey(im)) || (im.type === 'video' ? g.images.find(old => old.type === 'video' && old.order === im.order && (!old.preview || !im.preview)) : null);
-            if (!old && g.images.length < 4) { g.images.push(im); changed = true; }
+            if (!old && g.images.length < 8) { g.images.push(im); changed = true; }
+            else if(old&&im.type!=='video'){old.order=im.order;}
             else if (old && im.type === 'video') { old.variants = im.variants.length ? im.variants : old.variants; old.url = old.variants[0]?.url || ''; old.preview = im.preview || old.preview; old.gif = im.gif; }
           }
           g.images.sort((a, b) => a.order - b.order);
@@ -874,12 +881,13 @@
   player.addEventListener('waiting', () => { if (videoSession?.source) videoStatus('正在缓冲…'); });
   player.addEventListener('error', () => { if (videoSession?.source) videoStatus('视频加载失败，可切换清晰度或打开原推文'); });
   document.addEventListener('visibilitychange', () => { if (document.hidden && videoSession) player.pause(); });
+  function updateGridModes(n){for(const mode of ['grid','grid3x2','grid2x3'])$('[data-mode="'+mode+'"]').disabled=n!==(mode==='grid'?4:6);}
   function setMode(s, mode) { s.mode = mode; s.seams = []; root.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode)); }
   async function openStitch(images, suggestion, options = {}) {
     if (images.length < 2) return; const s = {images: images.map(im => ({...im})), mode: 'horizontal', blend: true, seams: [], version: 0, touched: false, onConfirm: options.onConfirm, confirmedPlan: null}; stitchSession = s;
     $('.stitchqueue').classList.toggle('hidden', !s.onConfirm); $('.stitchqueue').disabled = true;
     $('.blend input').checked = true; $('.seamcontrols').replaceChildren(); $('.alignmentnote').textContent = ''; openModal('.stitcher'); $('.stitched').classList.add('hidden'); $('.stitchcopy').disabled = $('.stitchsave').disabled = true;
-    $('[data-mode="grid"]').disabled = images.length !== 4; setMode(s, 'horizontal'); renderOrder(s);
+    updateGridModes(images.length); setMode(s, 'horizontal'); renderOrder(s);
     $('.detectnote').textContent = '正在比较相邻边缘…'; $('.detectnote').classList.remove('good');
     if(options.plan){s.images=options.plan.urls.map(url=>s.images.find(im=>im.url===url)).filter(Boolean);s.touched=true;setMode(s,options.plan.mode);s.blend=options.plan.blend;s.seams=options.plan.seams.map(seam=>({...seam}));$('.blend input').checked=s.blend;$('.detectnote').textContent='已恢复上次确认的拼接，可继续调整。';renderOrder(s);requestPreview(s);}
     else if (suggestion) applySuggestion(s, suggestion); else {
@@ -894,6 +902,7 @@
     $('.detectnote').textContent = suggestion.suggested ? '发现连续边缘，已按建议排列。请检查预览接缝。' : '未找到可靠的连续边缘，保持当前顺序，可手动拼接。'; $('.detectnote').classList.toggle('good', suggestion.suggested); renderOrder(s); requestPreview(s);
   }
   function renderOrder(s) {
+    updateGridModes(s.images.length);
     $('.order').replaceChildren(); s.images.forEach((im, i) => {
       const row = document.createElement('div'); row.className = 'orderrow'; const img = new Image(); img.src = im.preview; img.alt = `片段 ${i + 1}`; const label = document.createElement('span'); label.textContent = `片段 ${i + 1}`;
       const up = button('↑', 'up', '前移'), down = button('↓', 'down', '后移'); up.disabled = i === 0; down.disabled = i === s.images.length - 1;
@@ -901,8 +910,8 @@
       const remove = button('×', 'remove-piece', `删除片段 ${i + 1}`); remove.setAttribute('aria-label', `删除片段 ${i + 1}`);
       remove.onclick = () => {
         s.touched = true; s.seams = []; s.images.splice(i, 1);
-        $('[data-mode="grid"]').disabled = s.images.length !== 4;
-        if (s.mode === 'grid') setMode(s, 'horizontal');
+        updateGridModes(s.images.length);
+        if(s.mode.startsWith('grid'))setMode(s,'horizontal');
         $('.detectnote').textContent = '已移除此片段，可继续调整顺序或重新智能排序。'; $('.detectnote').classList.remove('good');
         $('.seamcontrols').replaceChildren(); $('.alignmentnote').textContent = '';
         renderOrder(s); requestPreview(s);
@@ -924,7 +933,7 @@
       }
       $('.seamcontrols').append(row);
     });
-    $('.alignmentnote').textContent = s.mode === 'grid' ? '四宫格按原始尺寸排列。' : seams.some(x => x.manual) ? '已使用手动参数，预览与导出一致。' : seams.some(x => x.accepted) ? '已对齐可靠匹配的接缝；其余保留原位置。' : '未找到可靠重叠，已保留原位置。若线条断开，可能是切片缺失内容，请勿盲目增加重叠。';
+    $('.alignmentnote').textContent = s.mode.startsWith('grid') ? '宫格按原始尺寸排列，不缩放原片。' : seams.some(x => x.manual) ? '已使用手动参数，预览与导出一致。' : seams.some(x => x.accepted) ? '已对齐可靠匹配的接缝；其余保留原位置。' : '未找到可靠重叠，已保留原位置。若线条断开，可能是切片缺失内容，请勿盲目增加重叠。';
   }
   let previewTimer;
   function requestPreview(s) {

@@ -110,7 +110,7 @@ async function prepareArchive(id){
     if(images.some(im=>im.width>32767||im.height>32767)||images.reduce((n,im)=>n+im.width*im.height,0)>100000000)throw Error('图片总尺寸过大，原图已保留，请分开保存');
     const suggestion=images.length>1&&!assets.some(a=>a.mime==='image/gif')?XIF.detect(images.map(im=>pixels(im,Math.min(1,192/Math.max(im.width,im.height))))):null;
     const plan=XIFArchivePresentation.plan(entry,suggestion),outputs=[],photos=[];
-    const groups=plan.kind==='slice'?[plan.order]:plan.order.map(i=>[i]);
+    const groups=plan.kind==='slice'?[plan.order]:plan.kind==='mixed'?[[0],plan.order]:plan.order.map(i=>[i]);
     let bytes=0,seams=[];
     for(const indices of groups){
       const urls=indices.map(i=>entry.photos[i].url),local={images:indices.map(i=>images[i]),assets:indices.map(i=>assets[i])};
@@ -118,7 +118,7 @@ async function prepareArchive(id){
       bytes+=result.png.size;if(result.png.size>64*1024*1024||bytes>160*1024*1024)throw Error('云端 PNG 过大，原文件已保留，请分开保存');
       const hash=[...new Uint8Array(await crypto.subtle.digest('SHA-256',await result.png.arrayBuffer()))].map(v=>v.toString(16).padStart(2,'0')).join('');
       outputs.push({hash,blob:result.png,mime:'image/png',bytes:result.png.size});
-      photos.push({hash,url:urls[0],alt:plan.kind==='slice'?'拼接整图':entry.photos[indices[0]].alt,width:result.width,height:result.height,sourceIndices:indices});seams=result.seams;
+      photos.push({hash,url:urls[0],alt:indices.length>1?'拼接整图':entry.photos[indices[0]].alt,width:result.width,height:result.height,sourceIndices:indices});seams=result.seams;
     }
     await XIFLibrary.presentation(id,{format:XIFArchivePresentation.FORMAT,signature:XIFArchivePresentation.signature(entry),kind:plan.kind,mode:plan.mode||null,order:plan.order,seams,photos},outputs);
     return {ok:true,kind:plan.kind,count:photos.length};
@@ -144,7 +144,7 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
       } finally {image.close();}
     }
     const urls = msg.urls || [msg.url];
-    if (!Array.isArray(urls) || urls.length < 1 || urls.length > 4) throw Error('图片数量无效');
+    if (!Array.isArray(urls) || urls.length < 1 || urls.length > 8) throw Error('图片数量无效');
     urls.forEach(url => XIF.mediaURL(url));
     if (msg.action === 'prefetch') { await Promise.all(urls.map(url => fetchImage(url, 'orig', true))); return {ok: true}; }
     if (msg.action === 'analyze') return analyze(urls);

@@ -21,7 +21,8 @@
       const {value, depth} = stack.pop(); if (!value || typeof value !== 'object' || depth > 35) continue;
       const legacy = value.legacy || value, id = String(legacy.id_str || value.rest_id || '');
       if (/^\d+$/.test(id) && (Array.isArray(legacy.extended_entities?.media) || Number.isSafeInteger(legacy.favorite_count) || Number.isSafeInteger(legacy.bookmark_count) || typeof legacy.favorited === 'boolean' || typeof legacy.bookmarked === 'boolean' || typeof value.bookmarked === 'boolean')) {
-        const media = (legacy.extended_entities?.media || []).slice(0, 4).flatMap((m, index) => {
+        const media = (legacy.extended_entities?.media || []).slice(0, 8).flatMap((m, index) => {
+          if(m.type==='photo'){const url=posterURL(m.media_url_https);return /^https:\/\/pbs\.twimg\.com\/media\/[\w.-]+(?:\?[^#]*)?$/.test(url)?[{type:'photo',url,alt:String(m.ext_alt_text||'推文图片').slice(0,160),width:Math.max(1,Number(m.original_info?.width)||600),height:Math.max(1,Number(m.original_info?.height)||800),order:index+1}]:[];}
           if (!['video', 'animated_gif'].includes(m.type)) return [];
           const sources = variants(m.video_info?.variants), ratio = m.video_info?.aspect_ratio;
           return [{key: String(m.media_key || m.id_str || index), type: 'video', gif: m.type === 'animated_gif', poster: posterURL(m.media_url_https), variants: sources, width: Math.max(1, Number(m.original_info?.width || ratio?.[0] || 16)), height: Math.max(1, Number(m.original_info?.height || ratio?.[1] || 9)), order: index + 1}];

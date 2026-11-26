@@ -36,7 +36,7 @@
   function tags(value) { return [...new Set((Array.isArray(value)?value:String(value||'').split(/[,，]/)).map(v=>String(v).trim().slice(0,24)).filter(Boolean))].slice(0,12); }
   function input(value) {
     const post=scope.XIF.status(value?.href);
-    if(!post || post.id!==value.id || !/^\d{1,30}$/.test(value.id) || !Array.isArray(value.images) || value.images.length<1 || value.images.length>4)throw Error('收图来源或数量无效');
+    if(!post || post.id!==value.id || !/^\d{1,30}$/.test(value.id) || !Array.isArray(value.images) || value.images.length<1 || value.images.length>8)throw Error('收图来源或数量无效');
     const images=value.images.map(im=>({url:scope.XIF.mediaURL(im.url),alt:String(im.alt||'图片').slice(0,160)}));
     const sourceURL=new URL(value.href),href='https://x.com'+sourceURL.pathname.split('/status/')[0]+'/status/'+post.id;
     let authorURL='';try{const u=new URL(value.authorURL||value.href);const handle=u.pathname.split('/')[1];if(['https://x.com','https://twitter.com'].includes(u.origin)&&/^[A-Za-z0-9_]{1,15}$/.test(handle)&&handle!=='i')authorURL='https://x.com/'+handle;}catch{}
@@ -46,7 +46,7 @@
     const source=input(value), old=await read('entries',source.id), photos=[...(old?.photos||[])], additions=[], aliases=[]; let bytes=0;
     for(const im of source.images) {
       if(photos.some(p=>p.url===im.url))continue;
-      if(photos.length>=4)throw Error('同一推文最多保存四张图片');
+      if(photos.length>=8)throw Error('同一推文最多保存八张图片');
       const alias=await read('aliases',im.url);let asset=alias&&await read('assets',alias.hash);
       if(!asset) {
         const response=await fetch(im.url,{credentials:'omit',signal:AbortSignal.timeout(25000)});
@@ -61,6 +61,7 @@
       }
       photos.push({url:im.url,hash:asset.hash,alt:im.alt,copiedAt:0});
     }
+    const rank=new Map(source.images.map((im,i)=>[im.url,i]));if(photos.every(p=>rank.has(p.url)))photos.sort((a,b)=>rank.get(a.url)-rank.get(b.url));
     const entry={id:source.id,href:source.href,author:source.author,authorURL:source.authorURL,description:source.description||old?.description||'',postedAt:source.postedAt||old?.postedAt||'',photos,tags:old?.tags||[],archiveChoice:old?.archiveChoice||'auto',presentation:old?.presentation,state:photos.length>(old?.photos.length||0)?'saved':old?.state||'saved',createdAt:old?.createdAt||Date.now(),updatedAt:Date.now()};
     await write(['entries','assets','aliases'],tx=>{
       for(const a of additions)tx.objectStore('assets').put(a);
@@ -72,7 +73,7 @@
   async function edit(id,patch) { return enqueue(async()=>{
     const entry=await read('entries',id);if(!entry)throw Error('这条收藏不存在');
     if(patch.tags!==undefined)entry.tags=tags(patch.tags);
-    if(patch.archiveChoice!==undefined){if(!['auto','album','horizontal','vertical','grid'].includes(patch.archiveChoice))throw Error('上传类型无效');if(patch.archiveChoice==='grid'&&entry.photos.length!==4)throw Error('四宫格需要四张图片');entry.archiveChoice=patch.archiveChoice;delete entry.presentation;}
+    if(patch.archiveChoice!==undefined){if(!['auto','album','horizontal','vertical','grid','grid3x2','grid2x3','cover-horizontal','cover-vertical'].includes(patch.archiveChoice))throw Error('上传类型无效');if(patch.archiveChoice==='grid'&&entry.photos.length!==4)throw Error('四宫格需要四张图片');if(['grid3x2','grid2x3'].includes(patch.archiveChoice)&&entry.photos.length!==6)throw Error('六宫格需要六张图片');if(patch.archiveChoice.startsWith('cover-')&&entry.photos.length<3)throw Error('封面之外至少需要两张切片');entry.archiveChoice=patch.archiveChoice;delete entry.presentation;}
     if(patch.state!==undefined) {
       if(!['saved','copied','sent'].includes(patch.state))throw Error('收图状态无效');
       entry.state=patch.state;if(patch.state==='saved')for(const p of entry.photos)p.copiedAt=0;
@@ -80,7 +81,7 @@
     entry.updatedAt=Date.now();await write(['entries'],tx=>tx.objectStore('entries').put(entry));return entry;
   }); }
   async function presentation(id,value,assets){return enqueue(async()=>{
-    if(!value||!Array.isArray(assets)||assets.length>4||assets.some(a=>a.mime!=='image/png'||!(a.blob instanceof Blob)||!a.blob.size||a.blob.size>64*1024*1024))throw Error('云端 PNG 格式或大小无效');
+    if(!value||!Array.isArray(assets)||assets.length>8||assets.some(a=>a.mime!=='image/png'||!(a.blob instanceof Blob)||!a.blob.size||a.blob.size>64*1024*1024))throw Error('云端 PNG 格式或大小无效');
     await write(['entries','assets'],tx=>{
       const req=tx.objectStore('entries').get(id);
       req.onsuccess=()=>{const entry=req.result;if(!entry||scope.XIFArchivePresentation.signature(entry)!==value.signature){tx.abort();return;}for(const asset of assets)tx.objectStore('assets').put(asset);entry.presentation=value;tx.objectStore('entries').put(entry);};
