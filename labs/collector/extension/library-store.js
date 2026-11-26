@@ -37,13 +37,13 @@
   function input(value) {
     const post=scope.XIF.status(value?.href);
     if(!post || post.id!==value.id || !/^\d{1,30}$/.test(value.id) || !Array.isArray(value.images) || value.images.length<1 || value.images.length>8)throw Error('收图来源或数量无效');
-    const images=value.images.map(im=>({url:scope.XIF.mediaURL(im.url),alt:String(im.alt||'图片').slice(0,160)}));
+    const images=scope.XIF.uniquePhotos(value.images.map(im=>({url:scope.XIF.mediaURL(im.url),alt:String(im.alt||'图片').slice(0,160)})));
     const sourceURL=new URL(value.href),href='https://x.com'+sourceURL.pathname.split('/status/')[0]+'/status/'+post.id;
     let authorURL='';try{const u=new URL(value.authorURL||value.href);const handle=u.pathname.split('/')[1];if(['https://x.com','https://twitter.com'].includes(u.origin)&&/^[A-Za-z0-9_]{1,15}$/.test(handle)&&handle!=='i')authorURL='https://x.com/'+handle;}catch{}
     return {id:post.id,href,author:String(value.author||'X 作者').slice(0,100),authorURL,description:String(value.description||'').replace(/\s+/g,' ').trim().slice(0,300),postedAt:scope.XIF.postTime(post.id,value.postedAt),images};
   }
   async function save(value) { return enqueue(async()=>{
-    const source=input(value), old=await read('entries',source.id), photos=[...(old?.photos||[])], additions=[], aliases=[]; let bytes=0;
+    const source=input(value), old=await read('entries',source.id), photos=scope.XIF.uniquePhotos(old?.photos||[]), additions=[], aliases=[]; let bytes=0;
     for(const im of source.images) {
       if(photos.some(p=>p.url===im.url))continue;
       if(photos.length>=8)throw Error('同一推文最多保存八张图片');
@@ -104,6 +104,20 @@
       for(const a of aliases)if(orphan.has(a.hash))tx.objectStore('aliases').delete(a.url);
     });
   }); }
+  async function repairPhotoURLs(){return enqueue(async()=>{
+    const changed=[],aliases=[],updatedJobs=[];
+    for(const entry of await all('entries')){
+      const photos=scope.XIF.uniquePhotos(entry.photos);
+      if(JSON.stringify(photos)===JSON.stringify(entry.photos))continue;
+      const next={...entry,photos,updatedAt:Date.now()};delete next.presentation;
+      if(next.state!=='sent')next.state=photos.length&&photos.every(p=>p.copiedAt)?'copied':'saved';
+      changed.push(next);for(const photo of photos)aliases.push({url:photo.url,hash:photo.hash});
+    }
+    for(const job of await all('jobs')){const source=input(job.source);if(JSON.stringify(source)!==JSON.stringify(job.source))updatedJobs.push({...job,source});}
+    if(changed.length||updatedJobs.length)await write(['entries','aliases','jobs'],tx=>{for(const e of changed)tx.objectStore('entries').put(e);for(const a of aliases)tx.objectStore('aliases').put(a);for(const j of updatedJobs)tx.objectStore('jobs').put(j);});
+    // Keep every original blob and historical cloud receipt; never delete user media here.
+    return changed.map(e=>e.id);
+  });}
   async function summary() {
     const entries=await all('entries');
     return {entries:entries.map(e=>({id:e.id,photos:e.photos.map(p=>({url:p.url,copiedAt:p.copiedAt})),state:e.state})),urls:[...new Set(entries.flatMap(e=>e.photos.map(p=>p.url)))]};
@@ -111,6 +125,6 @@
   async function putJob(job) { return enqueue(()=>write(['jobs'],tx=>tx.objectStore('jobs').put(job))); }
   async function putDrive(store,value){if(!['driveJobs','driveRecords'].includes(store))throw Error('云盘记录无效');return enqueue(()=>write([store],tx=>tx.objectStore(store).put(value)));}
   async function driveJobs(account,states){const db=await database(),index=db.transaction('driveJobs').objectStore('driveJobs').index('accountState');return (await Promise.all(states.map(state=>request(index.getAll([account,state]))))).flat();}
-  scope.XIFLibrary={database,read,all,save,edit,presentation,progress,remove,summary,tags,input,putJob,assetStats,jobs,putDrive,driveJobs};
+  scope.XIFLibrary={database,read,all,repairPhotoURLs,save,edit,presentation,progress,remove,summary,tags,input,putJob,assetStats,jobs,putDrive,driveJobs};
   if(typeof module!=='undefined')module.exports={tags,input};
 })(globalThis);

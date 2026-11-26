@@ -15,7 +15,7 @@
   root.innerHTML = `<style>.hidden{display:none!important}</style><link rel="stylesheet" href="${chrome.runtime.getURL('ui.css')}">
     <button class="launch primary">▦ 拾图 · 图片与视频</button>
     <section class="panel hidden" aria-label="拾图图片与视频浏览器">
-      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.17</div></div>
+      <header><div><div class="brand"><span class="brand-mark">▦</span>拾图 · 收藏实验室</div><div class="sub">X IMAGE FLOW / LAB / 2.4.0.18</div></div>
         <div class="tools"><button class="selection" disabled>拼接选中图片</button><button class="speed" title="提前加载图片与原图；关闭后仍会自动续载" aria-pressed="true">ϟ 极速预取</button><select class="density" aria-label="图片密度"><option value="320">舒适</option><option value="230">紧凑</option><option value="440">大图</option></select><button class="helpbtn">发到 QQ</button><button class="close">返回 X ↗</button></div>
       </header><div class="feedbar hidden"><span class="feedlabel">主页来源</span><div class="feedgroup"><button data-feed="for-you">为你推荐</button><button data-feed="following">正在关注</button></div><span class="feedstatus">图库保持打开，已收集内容自动合并</span></div>
       <nav class="tabs" aria-label="内容筛选"><button class="tab active" data-filter="all">全部</button><button class="tab" data-filter="image">图片</button><button class="tab" data-filter="video">视频</button><button class="tab" data-filter="like">喜欢</button><button class="tab" data-filter="bookmark">书签</button><span class="tabnote">视频默认低清 · 喜欢 / 书签同步到 X</span></nav>
@@ -646,7 +646,7 @@
       message({action: 'analyze', urls}).then(r => { if (g.analysisKey !== key) return; g.suggestion = r.suggestion; g.stitch.classList.toggle('suggested', r.suggestion.suggested); g.stitch.querySelector('span').textContent = r.suggestion.suggested ? '疑似切片' : '拼接'; g.stitch.title = r.suggestion.suggested ? '边缘连续，点击预览拼接' : '手动拼接这组图片'; bulkPicker.update(g); }).catch(() => { g.analysisKey = null; }).finally(() => { analyzing--; pumpAnalysis(); });
     }
   }
-  function mediaKey(im) { return `${im.type === 'video' ? 'video' : 'image'}:${im.preview ? new URL(im.preview).pathname : im.key || im.order}`; }
+  function mediaKey(im) { return im.type==='video'?`video:${im.preview?new URL(im.preview).pathname:im.key||im.order}`:'image:'+XIF.photoKey(im.url); }
   const photoMetadata=new Map();
   window.addEventListener('message', event => {
     if (event.source !== window || event.origin !== location.origin || event.data?.channel !== 'xif-video-v1' || !Array.isArray(event.data.records)) return;
@@ -734,10 +734,10 @@
         const photoLink = img.closest('a[href*="/status/"]'), post = XIF.status(photoLink?.href) || mainPost;
         if (!found.has(post.id)) found.set(post.id, {post, images: []});
         const photos = found.get(post.id).images;
-        if (!photos.some(im => new URL(im.url).pathname === new URL(url).pathname)) photos.push({url, preview: XIF.mediaURL(url, 'small'), alt: img.alt || '推文图片', width: img.naturalWidth || 600, height: img.naturalHeight || 800, order: Number(photoLink?.href.match(/\/photo\/(\d+)/)?.[1] || photos.length + 1)});
+        if (!photos.some(im => XIF.photoKey(im.url) === XIF.photoKey(url))) photos.push({url, preview: XIF.mediaURL(url, 'small'), alt: img.alt || '推文图片', width: img.naturalWidth || 600, height: img.naturalHeight || 800, order: Number(photoLink?.href.match(/\/photo\/(\d+)/)?.[1] || photos.length + 1)});
       }
       // Merge only the outer post and already attributed quoted posts.
-      for(const post of [mainPost,...[...found.values()].map(row=>row.post)])for(const photo of photoMetadata.get(post.id)||[]){if(!found.has(post.id))found.set(post.id,{post,images:[]});const list=found.get(post.id).images;const old=list.find(im=>im.url&&new URL(im.url).pathname===new URL(photo.url).pathname);if(old)Object.assign(old,{order:photo.order,width:photo.width,height:photo.height});else list.push({...photo});}
+      for(const post of [mainPost,...[...found.values()].map(row=>row.post)])for(const photo of photoMetadata.get(post.id)||[]){if(!found.has(post.id))found.set(post.id,{post,images:[]});const list=found.get(post.id).images;const old=list.find(im=>im.url&&XIF.photoKey(im.url)===XIF.photoKey(photo.url));if(old)Object.assign(old,{order:photo.order,width:photo.width,height:photo.height});else list.push({...photo});}
       collectVideos(article, mainPost, found);
       for (const {post, images} of found.values()) {
         if (!images.length) continue; images.sort((a, b) => a.order - b.order);

@@ -4,7 +4,14 @@
   function mediaURL(value, size = 'orig') {
     const u = new URL(value);
     if (u.origin !== 'https://pbs.twimg.com' || !/^\/media\/[\w.-]+$/.test(u.pathname) || u.username || u.password) throw Error('仅支持 X 推文图片');
-    u.searchParams.set('name', size); return u.href;
+    // X exposes the same photo as /id.jpg and /id?format=jpg.
+    const ext=u.pathname.match(/\.(jpe?g|png|webp|gif|avif)$/i),format=(u.searchParams.get('format')||ext?.[1]||'').toLowerCase().replace(/^jpeg$/,'jpg');
+    if(ext)u.pathname=u.pathname.slice(0,-ext[0].length);
+    u.search='';if(format)u.searchParams.set('format',format);u.searchParams.set('name',size);return u.href;
+  }
+  function photoKey(value){return new URL(mediaURL(value)).pathname;}
+  function uniquePhotos(photos){
+    const rows=new Map();for(const photo of photos){const url=mediaURL(photo.url),key=photoKey(url),old=rows.get(key);if(old){if(photo.copiedAt)old.copiedAt=Math.max(old.copiedAt||0,photo.copiedAt);}else rows.set(key,{...photo,url});}return [...rows.values()];
   }
   function status(value) {
     try {
@@ -97,6 +104,6 @@
     const iso=postTime(group.id,group.postedAt),time=iso?new Date(Date.parse(iso)+8*3600000).toISOString().slice(0,19).replace('T','_').replace(/:/g,'-'):'时间未知';
     return filenamePart([author,time,description||'推文',id,stitched?'拼接':'图'+String(index).padStart(2,'0')].join('_'),100);
   }
-  const api = {mediaURL, status, geometry, detect, filenamePart, imageName, postTime}; scope.XIF = api;
+  const api = {mediaURL, photoKey, uniquePhotos, status, geometry, detect, filenamePart, imageName, postTime}; scope.XIF = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

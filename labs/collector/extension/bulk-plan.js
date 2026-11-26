@@ -7,7 +7,7 @@
     return items.map(item=>{
       if(!item||!Array.isArray(item.urls)||item.urls.length<1||item.urls.length>8)throw Error('批量图片来源无效');
       const urls=item.urls.map(url=>scope.XIF.mediaURL(url));
-      for(const url of urls){if(used.has(url))throw Error('同一原图不能在本批重复选择');used.add(url);}
+      for(const url of urls){if(used.has(scope.XIF.photoKey(url)))throw Error('同一原图不能在本批重复选择');used.add(scope.XIF.photoKey(url));}
       if(item.name!==undefined&&(typeof item.name!=='string'||item.name.length>1000))throw Error('文件名无效');
       const name=item.name?scope.XIF.filenamePart(item.name):undefined;
       if(urls.length===1){if(item.mode!==undefined)throw Error('单图无需拼接');return {urls,...(name?{name}:{})};}

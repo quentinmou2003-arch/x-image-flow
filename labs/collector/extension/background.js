@@ -2,9 +2,10 @@
 importScripts('shared.js', 'motion.js', 'offscreen-client.js', 'native-copy.js', 'bulk-plan.js', 'library-store.js', 'archive-presentation.js', 'archive-queue.js', 'drive-client.js', 'drive-sync.js', 'drive-browser.js');
 const driveSync=new XIFDriveSync.DriveSync({store:XIFLibrary,chrome,prepare:XIFArchivePresentation.prepare,changed:type=>libraryChanged(type)});
 const driveBrowser=new XIFDriveBrowser.DriveBrowser(driveSync);
-const runDriveSync=()=>driveSync.pump().catch(error=>console.error('云同步暂停：',error.message));
+const runDriveSync=()=>startup.then(()=>driveSync.pump()).catch(error=>console.error('云同步暂停：',error.message));
 const archiveQueue=new XIFArchiveQueue({store:XIFLibrary,prepare:XIFArchivePresentation.prepare,changed:libraryChanged});
-const runArchiveQueue=()=>archiveQueue.pump().catch(error=>console.error('收图队列暂停：',error.message));
+const runArchiveQueue=()=>startup.then(()=>archiveQueue.pump()).catch(error=>console.error('收图队列暂停：',error.message));
+const startup=archiveQueue.ready.then(()=>XIFLibrary.repairPhotoURLs()).then(async ids=>{for(const id of ids)await archiveQueue.rebuild(id);});
 chrome.alarms.onAlarm.addListener(alarm=>{if(alarm.name==='xif-archive-queue'){runArchiveQueue();runDriveSync();}});
 chrome.alarms.create('xif-archive-queue',{periodInMinutes:1});
 runArchiveQueue();
@@ -17,6 +18,7 @@ chrome.action.onClicked.addListener(async tab => {
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.target !== 'worker') return;
   (async () => {
+    await startup;
     const ownLibrary = sender.id === chrome.runtime.id && sender.url?.startsWith(chrome.runtime.getURL('library.html'));
     const xPage = sender.id === chrome.runtime.id && sender.tab && /^https:\/\/(x|twitter)\.com\//.test(sender.url || '');
     if(msg.action?.startsWith('drive-')){
